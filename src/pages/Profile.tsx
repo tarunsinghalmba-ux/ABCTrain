@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { MainLayout } from '../components/MainLayout'
 import { CourseCompletionModal } from '../components/CourseCompletionModal'
 import { ToastContainer } from '../components/ToastContainer'
@@ -335,12 +336,12 @@ export function Profile() {
                     { href: '/learning-paths', bg: '#F5F3FF', c: '#6D28D9', title: 'Learning Paths', sub: 'Group courses into structured learning paths' },
                     { href: '/compliance', bg: '#FFFBEB', c: '#B45309', title: 'Compliance Dashboard', sub: 'Track and manage compliance across your team' },
                   ].map(link => (
-                    <a key={link.href} href={link.href} style={{ display: 'block', padding: '14px 16px', background: link.bg, borderRadius: 12, textDecoration: 'none', transition: 'opacity 0.15s' }}
+                    <Link key={link.href} to={link.href} style={{ display: 'block', padding: '14px 16px', background: link.bg, borderRadius: 12, textDecoration: 'none', transition: 'opacity 0.15s' }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}>
                       <p style={{ fontSize: 14, fontWeight: 700, color: link.c, margin: '0 0 2px' }}>{link.title}</p>
                       <p style={{ fontSize: 12, color: link.c, margin: 0, opacity: 0.7 }}>{link.sub}</p>
-                    </a>
+                    </Link>
                   ))}
                 </div>
               </div>

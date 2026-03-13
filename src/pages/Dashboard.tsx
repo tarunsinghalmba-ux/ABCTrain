@@ -376,7 +376,7 @@ function AdminDashboard({ adminStats, recentActivity, name, role }: {
               { href: '/caregivers',     icon: Users,         label: 'Manage Caregivers', desc: 'Add caregivers and assign training',     bg: '#F0FDFA', iconColor: '#0D9488', hover: '#CCFBF1' },
               { href: '/compliance',     icon: ClipboardCheck,label: 'Compliance',        desc: 'View and export compliance reports',    bg: '#F0FDF4', iconColor: '#16A34A', hover: '#DCFCE7' },
             ].map(({ href, icon: Icon, label, desc, bg, iconColor, hover }) => (
-              <a key={href} href={href} style={{ textDecoration: 'none' }}>
+              <Link key={href} to={href} style={{ textDecoration: 'none' }}>
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 14,
                   padding: '14px 16px', borderRadius: 12, background: bg,
@@ -393,7 +393,7 @@ function AdminDashboard({ adminStats, recentActivity, name, role }: {
                   </div>
                   <ChevronRight size={16} color="#94A3B8" />
                 </div>
-              </a>
+              </Link>
             ))}
           </div>
         </div>
