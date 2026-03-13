@@ -40,13 +40,22 @@ export const organizationService = {
     return data || []
   },
 
-  async createOrganization(name: string, description?: string): Promise<Organization> {
+  async createOrganization(
+    name: string,
+    description?: string,
+    details?: { address?: string; phone?: string; website?: string; admin_name?: string; admin_email?: string }
+  ): Promise<Organization> {
     const { data, error } = await supabase
       .from('organizations')
       .insert({
         name,
         description: description || null,
-        is_active: true
+        is_active: true,
+        address: details?.address || null,
+        phone: details?.phone || null,
+        website: details?.website || null,
+        admin_name: details?.admin_name || null,
+        admin_email: details?.admin_email || null,
       })
       .select()
       .single()

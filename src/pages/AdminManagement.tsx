@@ -165,7 +165,7 @@ export function AdminManagement() {
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: ToastType }>>([])
   const [toastId, setToastId] = useState(0)
   const [formData, setFormData] = useState({ email: '', firstName: '', lastName: '', role: 'caregiver' as 'admin' | 'manager' | 'caregiver', organization: '', phone: '' })
-  const [orgFormData, setOrgFormData] = useState({ name: '', description: '' })
+  const [orgFormData, setOrgFormData] = useState({ name: '', description: '', address: '', phone: '', website: '', admin_name: '', admin_email: '' })
 
   const toast = (message: string, type: ToastType = 'info') => { const id = toastId; setToastId(p => p + 1); setToasts(p => [...p, { id, message, type }]) }
   const removeToast = (id: number) => setToasts(p => p.filter(t => t.id !== id))
@@ -195,8 +195,19 @@ export function AdminManagement() {
 
   const handleOrgSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    try { await organizationService.createOrganization(orgFormData.name, orgFormData.description); toast(`Organization "${orgFormData.name}" created`, 'success'); setOrgFormData({ name: '', description: '' }); setShowOrgForm(false); await loadOrgs() }
-    catch (e) { toast(e instanceof Error ? e.message : 'Failed to create organization', 'error') }
+    try {
+      await organizationService.createOrganization(orgFormData.name, orgFormData.description, {
+        address: orgFormData.address || undefined,
+        phone: orgFormData.phone || undefined,
+        website: orgFormData.website || undefined,
+        admin_name: orgFormData.admin_name || undefined,
+        admin_email: orgFormData.admin_email || undefined,
+      })
+      toast(`Organization "${orgFormData.name}" created`, 'success')
+      setOrgFormData({ name: '', description: '', address: '', phone: '', website: '', admin_name: '', admin_email: '' })
+      setShowOrgForm(false)
+      await loadOrgs()
+    } catch (e) { toast(e instanceof Error ? e.message : 'Failed to create organization', 'error') }
   }
 
   const handleToggleUser = async (id: string, active: boolean) => { try { await profileService.updateProfile(id, { is_active: !active }); toast(`User ${!active ? 'activated' : 'deactivated'}`, 'success'); await loadUsers() } catch { toast('Failed to update user', 'error') } }
@@ -276,12 +287,43 @@ export function AdminManagement() {
           <div style={{ background: 'white', borderRadius: 16, border: '1px solid #F1F5F9', padding: 24, marginBottom: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', ...anim() }}>
             <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: '0 0 20px' }}>Create New Organization</h2>
             <form onSubmit={handleOrgSubmit}>
-              <div style={{ marginBottom: 16 }}><label style={labelS}>Organization Name</label><input type="text" value={orgFormData.name} onChange={e => setOrgFormData({ ...orgFormData, name: e.target.value })} style={inputS} placeholder="e.g., North Division" required /></div>
-              <div style={{ marginBottom: 20 }}><label style={labelS}>Description <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label><textarea value={orgFormData.description} onChange={e => setOrgFormData({ ...orgFormData, description: e.target.value })} style={{ ...inputS, resize: 'vertical' }} rows={2} /></div>
-              <p style={{ fontSize: 12, color: '#94A3B8', margin: '0 0 16px' }}>You can add address, phone, and contact details after creating the organization.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelS}>Organization Name <span style={{ color: '#DC2626' }}>*</span></label>
+                  <input type="text" value={orgFormData.name} onChange={e => setOrgFormData({ ...orgFormData, name: e.target.value })} style={inputS} placeholder="e.g., North Division" required />
+                </div>
+                <div>
+                  <label style={labelS}>Description <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                  <input type="text" value={orgFormData.description} onChange={e => setOrgFormData({ ...orgFormData, description: e.target.value })} style={inputS} placeholder="Brief description" />
+                </div>
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <label style={labelS}><MapPin size={12} style={{ display: 'inline', marginRight: 4 }} />Address <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                <input type="text" value={orgFormData.address} onChange={e => setOrgFormData({ ...orgFormData, address: e.target.value })} style={inputS} placeholder="123 Main St, City, TX 12345" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={labelS}><Phone size={12} style={{ display: 'inline', marginRight: 4 }} />Phone <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                  <input type="tel" value={orgFormData.phone} onChange={e => setOrgFormData({ ...orgFormData, phone: e.target.value })} style={inputS} placeholder="(555) 123-4567" />
+                </div>
+                <div>
+                  <label style={labelS}><Globe size={12} style={{ display: 'inline', marginRight: 4 }} />Website <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                  <input type="text" value={orgFormData.website} onChange={e => setOrgFormData({ ...orgFormData, website: e.target.value })} style={inputS} placeholder="https://example.com" />
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+                <div>
+                  <label style={labelS}><User size={12} style={{ display: 'inline', marginRight: 4 }} />Administrator Name <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                  <input type="text" value={orgFormData.admin_name} onChange={e => setOrgFormData({ ...orgFormData, admin_name: e.target.value })} style={inputS} placeholder="Jane Smith" />
+                </div>
+                <div>
+                  <label style={labelS}><Mail size={12} style={{ display: 'inline', marginRight: 4 }} />Administrator Email <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                  <input type="email" value={orgFormData.admin_email} onChange={e => setOrgFormData({ ...orgFormData, admin_email: e.target.value })} style={inputS} placeholder="admin@example.com" />
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: 10 }}>
                 <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Create Organization</button>
-                <button type="button" onClick={() => setShowOrgForm(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                <button type="button" onClick={() => { setShowOrgForm(false); setOrgFormData({ name: '', description: '', address: '', phone: '', website: '', admin_name: '', admin_email: '' }) }} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               </div>
             </form>
           </div>
