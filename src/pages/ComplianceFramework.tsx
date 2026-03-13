@@ -1,94 +1,79 @@
 import React, { useEffect, useState } from 'react'
 import { MainLayout } from '../components/MainLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/Card'
 import { complianceService } from '../services/compliance'
 import type { ComplianceRequirement } from '../types'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft, FileText, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export function ComplianceFramework() {
   const [requirements, setRequirements] = useState<ComplianceRequirement[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadRequirements()
-  }, [])
+  useEffect(() => { load() }, [])
+  const load = async () => { try { setRequirements(await complianceService.getAllRequirements()) } catch (e) { console.error(e) } finally { setLoading(false) } }
 
-  const loadRequirements = async () => {
-    try {
-      const reqs = await complianceService.getAllRequirements()
-      setRequirements(reqs)
-    } catch (error) {
-      console.error('Error loading requirements:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const filtered = requirements.filter(r => r.required_for_role !== 'admin')
 
   return (
     <MainLayout>
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: 32 }}>
 
-      <main className="flex-1 p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
-            <Link
-              to="/compliance"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-4"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Compliance
-            </Link>
-            <h1 className="text-4xl font-bold text-slate-900 mb-2">Compliance Requirements Framework</h1>
-            <p className="text-slate-600">Texas Home and Community Support Services Agency (HCSSA) compliance requirements per 26 TAC §558</p>
+        <Link to="/compliance" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#2563EB', fontWeight: 600, fontSize: 14, textDecoration: 'none', marginBottom: 20, animation: 'fadeSlideUp 0.4s ease both' }}>
+          <ArrowLeft size={15} /> Back to Compliance
+        </Link>
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 28, animation: 'fadeSlideUp 0.4s ease both', animationDelay: '60ms' }}>
+          <div style={{ width: 48, height: 48, background: '#EFF6FF', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShieldCheck size={24} color="#2563EB" />
           </div>
-
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-              <p className="mt-4 text-slate-600">Loading requirements...</p>
-            </div>
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-6 h-6" />
-                  All Compliance Requirements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-900">Requirement</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-900">Regulation</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-900">Role</th>
-                        <th className="px-4 py-3 text-left font-semibold text-slate-900">Description</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {requirements
-                        .filter(r => r.required_for_role !== 'admin')
-                        .map(req => (
-                          <tr key={req.id} className="hover:bg-slate-50">
-                            <td className="px-4 py-3 font-medium text-slate-900">{req.requirement_name}</td>
-                            <td className="px-4 py-3 text-slate-600">{req.regulation_reference}</td>
-                            <td className="px-4 py-3">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {req.required_for_role}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">{req.description || 'See linked courses'}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <div>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', margin: '0 0 4px' }}>Compliance Requirements Framework</h1>
+            <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>Texas HCSSA compliance requirements per 26 TAC §558</p>
+          </div>
         </div>
-      </main>
+
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[1, 2, 3, 4, 5].map(i => <div key={i} style={{ height: 52, borderRadius: 10, background: 'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize: '200% 100%', animation: `shimmer 1.5s ease ${i * 0.1}s infinite` }} />)}
+          </div>
+        ) : (
+          <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', animation: 'fadeSlideUp 0.45s ease both', animationDelay: '120ms' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FileText size={17} color="#64748B" />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>All Compliance Requirements</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{filtered.length} requirements</span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
+                  <tr>
+                    {['Requirement', 'Regulation', 'Role', 'Description'].map(h => (
+                      <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((req, i) => (
+                    <tr key={req.id} style={{ borderBottom: '1px solid #F8FAFC', animation: `fadeSlideUp 0.4s ease both`, animationDelay: `${120 + i * 30}ms`, transition: 'background 0.1s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FAFBFC'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      <td style={{ padding: '13px 16px', fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{req.requirement_name}</td>
+                      <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B', fontFamily: 'monospace' }}>{req.regulation_reference}</td>
+                      <td style={{ padding: '13px 16px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: '#EFF6FF', color: '#2563EB' }}>
+                          {req.required_for_role}
+                        </span>
+                      </td>
+                      <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B' }}>{req.description || 'See linked courses'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </MainLayout>
   )
 }

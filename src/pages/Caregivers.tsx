@@ -2,323 +2,179 @@ import React, { useEffect, useState } from 'react'
 import { MainLayout } from '../components/MainLayout'
 import { CaregiverForm } from '../components/CaregiverForm'
 import { CourseAssignmentModal } from '../components/CourseAssignmentModal'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/Card'
 import { StatusBadge } from '../components/StatusBadge'
 import { profileService } from '../services/profiles'
 import { complianceService } from '../services/compliance'
 import type { Profile } from '../types'
-import { Plus, Users, CreditCard as Edit, Trash2, UserCheck, UserX, Search, CircleCheck as CheckCircle, CircleAlert as AlertCircle, BookOpen } from 'lucide-react'
+import { Plus, Users, Edit, Trash2, UserCheck, UserX, Search, CheckCircle, AlertCircle, BookOpen } from 'lucide-react'
 
 export function Caregivers() {
   const [caregivers, setCaregivers] = useState<Profile[]>([])
-  const [filteredCaregivers, setFilteredCaregivers] = useState<Profile[]>([])
+  const [filtered, setFiltered] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editingCaregiver, setEditingCaregiver] = useState<Profile | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [editing, setEditing] = useState<Profile|null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [search, setSearch] = useState('')
   const [showInactive, setShowInactive] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [showAssignModal, setShowAssignModal] = useState(false)
-  const [selectedCaregiver, setSelectedCaregiver] = useState<Profile | null>(null)
-  const [newCaregiverPassword, setNewCaregiverPassword] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string|null>(null)
+  const [showAssign, setShowAssign] = useState(false)
+  const [selectedCg, setSelectedCg] = useState<Profile|null>(null)
+  const [newPassword, setNewPassword] = useState<string|null>(null)
 
-  useEffect(() => {
-    loadCaregivers()
-  }, [showInactive])
+  useEffect(()=>{ loadCaregivers() },[showInactive])
+  useEffect(()=>{ filterList() },[caregivers,search])
 
-  useEffect(() => {
-    filterCaregivers()
-  }, [caregivers, searchTerm, showInactive])
+  const loadCaregivers = async () => { try { setCaregivers(await profileService.getCaregivers(!showInactive)) } catch(e){console.error(e)} finally{setLoading(false)} }
+  const filterList = () => {
+    let f = caregivers
+    if (search) { const t=search.toLowerCase(); f=f.filter(c=>c.first_name.toLowerCase().includes(t)||c.last_name.toLowerCase().includes(t)||c.email.toLowerCase().includes(t)||(c.organization?.toLowerCase().includes(t))) }
+    setFiltered(f)
+  }
 
-  const loadCaregivers = async () => {
+  const handleFormSubmit = async (data:{firstName:string;lastName:string;email:string;organization?:string}) => {
+    setSubmitting(true)
     try {
-      const data = await profileService.getCaregivers(!showInactive)
-      setCaregivers(data)
-    } catch (error) {
-      console.error('Error loading caregivers:', error)
-    } finally {
-      setLoading(false)
-    }
+      if (editing) { await profileService.updateCaregiver(editing.id,data) }
+      else { const r=await profileService.createCaregiver(data); await complianceService.initializeCaregiverCompliance(r.id); if(r.defaultPassword) setNewPassword(r.defaultPassword) }
+      await loadCaregivers(); setShowForm(false); setEditing(null)
+    } catch(e){ alert(`Failed: ${e instanceof Error?e.message:'Unknown'}`) }
+    finally { setSubmitting(false) }
   }
+  const handleDelete = async (id:string) => { try { await profileService.deleteCaregiver(id); await loadCaregivers(); setDeleteConfirm(null) } catch(e){alert('Failed to delete')} }
+  const handleToggle = async (cg:Profile) => { try { cg.is_active?await profileService.deactivateCaregiver(cg.id):await profileService.reactivateCaregiver(cg.id); await loadCaregivers() } catch(e){alert('Failed to update status')} }
 
-  const filterCaregivers = () => {
-    let filtered = caregivers
+  const stats = { total:caregivers.length, active:caregivers.filter(c=>c.is_active).length, inactive:caregivers.filter(c=>!c.is_active).length }
 
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(c =>
-        c.first_name.toLowerCase().includes(term) ||
-        c.last_name.toLowerCase().includes(term) ||
-        c.email.toLowerCase().includes(term) ||
-        (c.organization?.toLowerCase().includes(term))
-      )
-    }
-
-    setFilteredCaregivers(filtered)
-  }
-
-  const handleAddCaregiver = () => {
-    setEditingCaregiver(null)
-    setShowForm(true)
-  }
-
-  const handleEditCaregiver = (caregiver: Profile) => {
-    setEditingCaregiver(caregiver)
-    setShowForm(true)
-  }
-
-  const handleFormSubmit = async (data: {
-    firstName: string
-    lastName: string
-    email: string
-    organization?: string
-  }) => {
-    setIsSubmitting(true)
-    try {
-      if (editingCaregiver) {
-        await profileService.updateCaregiver(editingCaregiver.id, data)
-      } else {
-        const result = await profileService.createCaregiver(data)
-        console.log('Create caregiver result:', result)
-        await complianceService.initializeCaregiverCompliance(result.id)
-        if (result.defaultPassword) {
-          setNewCaregiverPassword(result.defaultPassword)
-        }
-      }
-      await loadCaregivers()
-      setShowForm(false)
-      setEditingCaregiver(null)
-    } catch (error) {
-      console.error('Error saving caregiver:', error)
-      alert(`Failed to save caregiver: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleDeleteCaregiver = async (id: string) => {
-    try {
-      await profileService.deleteCaregiver(id)
-      await loadCaregivers()
-      setDeleteConfirm(null)
-    } catch (error) {
-      console.error('Error deleting caregiver:', error)
-      alert('Failed to delete caregiver. Please try again.')
-    }
-  }
-
-  const handleToggleActive = async (caregiver: Profile) => {
-    try {
-      if (caregiver.is_active) {
-        await profileService.deactivateCaregiver(caregiver.id)
-      } else {
-        await profileService.reactivateCaregiver(caregiver.id)
-      }
-      await loadCaregivers()
-    } catch (error) {
-      console.error('Error toggling caregiver status:', error)
-      alert('Failed to update caregiver status. Please try again.')
-    }
-  }
-
-  const stats = {
-    total: caregivers.length,
-    active: caregivers.filter(c => c.is_active).length,
-    inactive: caregivers.filter(c => !c.is_active).length
-  }
+  const iconBox = (bg:string,icon:React.ReactNode) => (
+    <div style={{ width:40,height:40,background:bg,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>{icon}</div>
+  )
 
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div style={{ maxWidth:1200, margin:'0 auto', padding:32 }}>
+
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:28, animation:'fadeSlideUp 0.4s ease both' }}>
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">Caregiver Management</h1>
-            <p className="text-gray-600">Manage your caregiver team and track their information</p>
+            <h1 style={{ fontSize:26,fontWeight:800,color:'#0F172A',margin:'0 0 4px' }}>Caregiver Management</h1>
+            <p style={{ fontSize:14,color:'#64748B',margin:0 }}>Manage your team and track their training</p>
           </div>
-          <button
-            onClick={handleAddCaregiver}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={20} />
-            <span>Add Caregiver</span>
+          <button onClick={()=>{setEditing(null);setShowForm(true)}} style={{ display:'inline-flex',alignItems:'center',gap:8,padding:'10px 18px',background:'#2563EB',color:'white',border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:'pointer' }}>
+            <Plus size={18}/> Add Caregiver
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium mb-2">Total Caregivers</p>
-                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+        {/* Stats */}
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,marginBottom:24 }}>
+          {[
+            { label:'Total Caregivers', value:stats.total,  color:'#2563EB', bg:'#EFF6FF', icon:<Users size={20} color="#2563EB"/> },
+            { label:'Active',           value:stats.active,  color:'#16A34A', bg:'#F0FDF4', icon:<UserCheck size={20} color="#16A34A"/> },
+            { label:'Inactive',         value:stats.inactive,color:'#64748B', bg:'#F1F5F9', icon:<UserX size={20} color="#64748B"/> },
+          ].map((s,i) => (
+            <div key={s.label} style={{ background:'white',borderRadius:14,border:'1px solid #F1F5F9',padding:'20px 22px',boxShadow:'0 1px 3px rgba(0,0,0,0.05)',animation:'fadeSlideUp 0.45s ease both',animationDelay:`${i*60}ms` }}>
+              <div style={{ display:'flex',alignItems:'flex-start',justifyContent:'space-between' }}>
+                <div>
+                  <p style={{ fontSize:11,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6 }}>{s.label}</p>
+                  <p style={{ fontSize:32,fontWeight:800,color:s.color,margin:0 }}>{s.value}</p>
+                </div>
+                <div style={{ width:40,height:40,background:s.bg,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>{s.icon}</div>
               </div>
-              <Users className="text-gray-400" size={24} />
             </div>
-          </div>
-
-          <div className="card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium mb-2">Active</p>
-                <p className="text-3xl font-bold text-green-600">{stats.active}</p>
-              </div>
-              <UserCheck className="text-green-600" size={24} />
-            </div>
-          </div>
-
-          <div className="card p-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium mb-2">Inactive</p>
-                <p className="text-3xl font-bold text-gray-600">{stats.inactive}</p>
-              </div>
-              <UserX className="text-gray-600" size={24} />
-            </div>
-          </div>
+          ))}
         </div>
 
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
-              <div className="relative w-full md:w-96">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <input
-                  type="text"
-                  placeholder="Search by name, email, or organization..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showInactive}
-                  onChange={(e) => setShowInactive(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Show inactive caregivers</span>
-              </label>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Search + filter */}
+        <div style={{ background:'white',borderRadius:14,border:'1px solid #F1F5F9',padding:'16px 20px',marginBottom:20,display:'flex',alignItems:'center',gap:16,animation:'fadeSlideUp 0.45s ease both',animationDelay:'180ms' }}>
+          <div style={{ position:'relative',flex:1,maxWidth:380 }}>
+            <Search size={16} style={{ position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',color:'#94A3B8',pointerEvents:'none' }}/>
+            <input type="text" placeholder="Search by name, email or org…" value={search} onChange={e=>setSearch(e.target.value)}
+              style={{ width:'100%',padding:'9px 12px 9px 36px',border:'1px solid #E2E8F0',borderRadius:10,fontSize:14,outline:'none' }}/>
+          </div>
+          <label style={{ display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:14,color:'#475569',fontWeight:500,flexShrink:0 }}>
+            <input type="checkbox" checked={showInactive} onChange={e=>setShowInactive(e.target.checked)} style={{ width:16,height:16 }}/>
+            Show inactive
+          </label>
+        </div>
 
+        {/* Add/Edit form */}
         {showForm && (
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>
-                {editingCaregiver ? 'Edit Caregiver' : 'Add New Caregiver'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CaregiverForm
-                caregiver={editingCaregiver}
-                onSubmit={handleFormSubmit}
-                onCancel={() => {
-                  setShowForm(false)
-                  setEditingCaregiver(null)
-                }}
-                isLoading={isSubmitting}
-              />
-            </CardContent>
-          </Card>
+          <div style={{ background:'white',borderRadius:14,border:'1px solid #F1F5F9',marginBottom:20,overflow:'hidden',animation:'fadeSlideUp 0.4s ease both' }}>
+            <div style={{ padding:'16px 20px',borderBottom:'1px solid #F8FAFC' }}>
+              <h2 style={{ fontSize:16,fontWeight:700,color:'#0F172A',margin:0 }}>{editing?'Edit Caregiver':'Add New Caregiver'}</h2>
+            </div>
+            <div style={{ padding:20 }}>
+              <CaregiverForm caregiver={editing} onSubmit={handleFormSubmit} onCancel={()=>{setShowForm(false);setEditing(null)}} isLoading={submitting}/>
+            </div>
+          </div>
         )}
 
+        {/* Table */}
         {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Loading caregivers...</p>
+          <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
+            {[1,2,3,4].map(i=><div key={i} style={{ height:56,borderRadius:10,background:'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)',backgroundSize:'200% 100%',animation:`shimmer 1.5s ease ${i*0.1}s infinite` }}/>)}
           </div>
         ) : (
-          <Card>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
+          <div style={{ background:'white',borderRadius:14,border:'1px solid #F1F5F9',overflow:'hidden',animation:'fadeSlideUp 0.45s ease both',animationDelay:'240ms' }}>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%',borderCollapse:'collapse' }}>
+                <thead style={{ background:'#F8FAFC',borderBottom:'1px solid #F1F5F9' }}>
                   <tr>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Email</th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Organization</th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">Status</th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">Compliance</th>
-                    <th className="px-6 py-3 text-center text-sm font-semibold text-gray-900">Actions</th>
+                    {['Name','Email','Organization','Status','Compliance','Actions'].map(h=>(
+                      <th key={h} style={{ padding:'12px 16px',textAlign:h==='Actions'||h==='Status'||h==='Compliance'?'center':'left',fontSize:11,fontWeight:700,color:'#94A3B8',textTransform:'uppercase',letterSpacing:'0.07em' }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredCaregivers.map((caregiver) => (
-                    <tr key={caregiver.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        {caregiver.first_name} {caregiver.last_name}
+                <tbody>
+                  {filtered.map((cg,i) => (
+                    <tr key={cg.id} style={{ borderBottom:'1px solid #F8FAFC', transition:'background 0.1s' }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#FAFBFC'}
+                      onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'}>
+                      <td style={{ padding:'14px 16px' }}>
+                        <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+                          <div style={{ width:34,height:34,borderRadius:'50%',background:'linear-gradient(135deg,#1E3A5F,#2563EB)',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:12,fontWeight:700,flexShrink:0 }}>
+                            {cg.first_name[0]}{cg.last_name[0]}
+                          </div>
+                          <span style={{ fontSize:14,fontWeight:600,color:'#0F172A' }}>{cg.first_name} {cg.last_name}</span>
+                        </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{caregiver.email}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {caregiver.organization || '-'}
+                      <td style={{ padding:'14px 16px',fontSize:13,color:'#64748B' }}>{cg.email}</td>
+                      <td style={{ padding:'14px 16px',fontSize:13,color:'#64748B' }}>{cg.organization||'—'}</td>
+                      <td style={{ padding:'14px 16px',textAlign:'center' }}>
+                        <span style={{ display:'inline-flex',alignItems:'center',gap:5,fontSize:11,fontWeight:700,padding:'3px 10px',borderRadius:20,background:cg.is_active?'#F0FDF4':'#FEF2F2',color:cg.is_active?'#16A34A':'#DC2626' }}>
+                          <span style={{ width:6,height:6,borderRadius:'50%',background:cg.is_active?'#16A34A':'#DC2626',display:'inline-block' }}/>
+                          {cg.is_active?'Active':'Inactive'}
+                        </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-center">
-                        {caregiver.is_active ? (
-                          <StatusBadge status="compliant" text="Active" />
-                        ) : (
-                          <StatusBadge status="overdue" text="Inactive" />
-                        )}
+                      <td style={{ padding:'14px 16px',textAlign:'center' }}>
+                        {(cg as any).orientation_complete
+                          ? <CheckCircle size={18} color="#16A34A"/>
+                          : <AlertCircle size={18} color="#D97706"/>}
                       </td>
-                      <td className="px-6 py-4 text-sm text-center">
-                        {caregiver.orientation_complete ? (
-                          <CheckCircle className="inline text-green-600" size={20} />
-                        ) : (
-                          <AlertCircle className="inline text-yellow-600" size={20} />
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => {
-                              setSelectedCaregiver(caregiver)
-                              setShowAssignModal(true)
-                            }}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Assign Training"
-                          >
-                            <BookOpen size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleEditCaregiver(caregiver)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit"
-                          >
-                            <Edit size={18} />
-                          </button>
-                          <button
-                            onClick={() => handleToggleActive(caregiver)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              caregiver.is_active
-                                ? 'text-orange-600 hover:bg-orange-50'
-                                : 'text-green-600 hover:bg-green-50'
-                            }`}
-                            title={caregiver.is_active ? 'Deactivate' : 'Activate'}
-                          >
-                            {caregiver.is_active ? <UserX size={18} /> : <UserCheck size={18} />}
-                          </button>
-                          {deleteConfirm === caregiver.id ? (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handleDeleteCaregiver(caregiver.id)}
-                                className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirm(null)}
-                                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-                              >
-                                Cancel
-                              </button>
+                      <td style={{ padding:'14px 16px' }}>
+                        <div style={{ display:'flex',alignItems:'center',justifyContent:'center',gap:6 }}>
+                          {[
+                            { icon:<BookOpen size={15}/>, bg:'#F5F3FF', col:'#7C3AED', hov:'#EDE9FE', action:()=>{setSelectedCg(cg);setShowAssign(true)}, title:'Assign Training' },
+                            { icon:<Edit size={15}/>,     bg:'#EFF6FF', col:'#2563EB', hov:'#DBEAFE', action:()=>{setEditing(cg);setShowForm(true)}, title:'Edit' },
+                            { icon: cg.is_active?<UserX size={15}/>:<UserCheck size={15}/>, bg: cg.is_active?'#FFFBEB':'#F0FDF4', col:cg.is_active?'#D97706':'#16A34A', hov:cg.is_active?'#FEF3C7':'#DCFCE7', action:()=>handleToggle(cg), title:cg.is_active?'Deactivate':'Activate' },
+                          ].map((btn,j) => (
+                            <button key={j} onClick={btn.action} title={btn.title} style={{ width:32,height:32,background:btn.bg,border:'none',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:btn.col,transition:'background 0.15s' }}
+                              onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background=btn.hov}
+                              onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=btn.bg}>
+                              {btn.icon}
+                            </button>
+                          ))}
+                          {deleteConfirm===cg.id ? (
+                            <div style={{ display:'flex',gap:4 }}>
+                              <button onClick={()=>handleDelete(cg.id)} style={{ padding:'4px 10px',background:'#DC2626',color:'white',border:'none',borderRadius:6,fontSize:12,fontWeight:700,cursor:'pointer' }}>Confirm</button>
+                              <button onClick={()=>setDeleteConfirm(null)} style={{ padding:'4px 10px',background:'#F1F5F9',color:'#475569',border:'none',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer' }}>Cancel</button>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => setDeleteConfirm(caregiver.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Delete"
-                            >
-                              <Trash2 size={18} />
+                            <button onClick={()=>setDeleteConfirm(cg.id)} title="Delete" style={{ width:32,height:32,background:'#FEF2F2',border:'none',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#DC2626',transition:'background 0.15s' }}
+                              onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#FEE2E2'}
+                              onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='#FEF2F2'}>
+                              <Trash2 size={15}/>
                             </button>
                           )}
                         </div>
@@ -327,52 +183,31 @@ export function Caregivers() {
                   ))}
                 </tbody>
               </table>
-
-              {filteredCaregivers.length === 0 && (
-                <div className="text-center py-12 text-gray-600">
-                  {searchTerm ? 'No caregivers found matching your search.' : 'No caregivers yet. Add your first caregiver to get started.'}
+              {filtered.length===0 && (
+                <div style={{ textAlign:'center',padding:'48px 0',color:'#94A3B8',fontSize:14 }}>
+                  {search?'No caregivers match your search.':'No caregivers yet. Add your first caregiver to get started.'}
                 </div>
               )}
             </div>
-          </Card>
+          </div>
         )}
       </div>
 
-      {showAssignModal && selectedCaregiver && (
-        <CourseAssignmentModal
-          caregiver={selectedCaregiver}
-          onClose={() => {
-            setShowAssignModal(false)
-            setSelectedCaregiver(null)
-          }}
-          onAssigned={() => {
-            loadCaregivers()
-          }}
-        />
+      {showAssign && selectedCg && (
+        <CourseAssignmentModal caregiver={selectedCg} onClose={()=>{setShowAssign(false);setSelectedCg(null)}} onAssigned={loadCaregivers}/>
       )}
 
-      {newCaregiverPassword && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Caregiver Created Successfully</h2>
-            <div className="mb-6">
-              <p className="text-gray-600 mb-4">
-                A new user account has been created. Please share these login credentials with the caregiver:
-              </p>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm font-medium text-gray-700 mb-2">Default Password:</p>
-                <p className="text-lg font-mono font-bold text-blue-600 mb-3">{newCaregiverPassword}</p>
-                <p className="text-xs text-gray-600">
-                  The caregiver can change this password after their first login.
-                </p>
-              </div>
+      {newPassword && (
+        <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:50 }}>
+          <div style={{ background:'white',borderRadius:18,maxWidth:420,width:'100%',padding:32,boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize:20,fontWeight:800,color:'#0F172A',marginBottom:12 }}>Caregiver Created</h2>
+            <p style={{ fontSize:14,color:'#64748B',marginBottom:16 }}>Share these credentials with the caregiver:</p>
+            <div style={{ background:'#EFF6FF',border:'1px solid #BFDBFE',borderRadius:12,padding:16,marginBottom:20 }}>
+              <p style={{ fontSize:12,fontWeight:600,color:'#64748B',marginBottom:6 }}>Default Password:</p>
+              <p style={{ fontSize:20,fontWeight:800,color:'#1D4ED8',fontFamily:'monospace',marginBottom:6 }}>{newPassword}</p>
+              <p style={{ fontSize:12,color:'#94A3B8',margin:0 }}>Caregiver can change this after first login.</p>
             </div>
-            <button
-              onClick={() => setNewCaregiverPassword(null)}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Close
-            </button>
+            <button onClick={()=>setNewPassword(null)} style={{ width:'100%',padding:11,background:'#2563EB',color:'white',border:'none',borderRadius:10,fontSize:15,fontWeight:700,cursor:'pointer' }}>Done</button>
           </div>
         </div>
       )}

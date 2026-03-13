@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react'
 import { MainLayout } from '../components/MainLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/Card'
 import { ToastContainer } from '../components/ToastContainer'
 import { profileService } from '../services/profiles'
 import { organizationService, type Organization } from '../services/organizations'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import type { Profile } from '../types'
-import { Users, Building2, Shield, Plus, X, Key } from 'lucide-react'
+import { Users, Building2, Shield, Plus, Key } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
 type TabType = 'users' | 'organizations'
+const anim = (d = 0): React.CSSProperties => ({ animation: 'fadeSlideUp 0.45s ease both', animationDelay: `${d}ms` })
+const inputS: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 14, color: '#0F172A', outline: 'none', boxSizing: 'border-box' }
+const labelS: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }
 
 export function AdminManagement() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<TabType>('users')
   const [users, setUsers] = useState<Profile[]>([])
   const [organizations, setOrganizations] = useState<Organization[]>([])
@@ -22,568 +24,217 @@ export function AdminManagement() {
   const [showOrgForm, setShowOrgForm] = useState(false)
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: ToastType }>>([])
   const [toastId, setToastId] = useState(0)
+  const [formData, setFormData] = useState({ email: '', firstName: '', lastName: '', role: 'caregiver' as 'admin' | 'manager' | 'caregiver', organization: '', phone: '' })
+  const [orgFormData, setOrgFormData] = useState({ name: '', description: '' })
 
-  const [formData, setFormData] = useState({
-    email: '',
-    firstName: '',
-    lastName: '',
-    role: 'caregiver' as 'admin' | 'manager' | 'caregiver',
-    organization: '',
-    phone: ''
-  })
+  const toast = (message: string, type: ToastType = 'info') => { const id = toastId; setToastId(p => p + 1); setToasts(p => [...p, { id, message, type }]) }
+  const removeToast = (id: number) => setToasts(p => p.filter(t => t.id !== id))
 
-  const [orgFormData, setOrgFormData] = useState({
-    name: '',
-    description: ''
-  })
+  useEffect(() => { load() }, [])
 
-  const showToast = (message: string, type: ToastType = 'info') => {
-    const id = toastId
-    setToastId(prev => prev + 1)
-    setToasts(prev => [...prev, { id, message, type }])
-  }
-
-  const removeToast = (id: number) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id))
-  }
-
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      await Promise.all([loadUsers(), loadOrganizations()])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadUsers = async () => {
-    try {
-      const data = await profileService.getProfiles()
-      setUsers(data)
-    } catch (err) {
-      console.error('Error loading users:', err)
-      showToast('Failed to load users', 'error')
-    }
-  }
-
-  const loadOrganizations = async () => {
-    try {
-      const data = await organizationService.getOrganizations()
-      setOrganizations(data)
-    } catch (err) {
-      console.error('Error loading organizations:', err)
-      showToast('Failed to load organizations', 'error')
-    }
-  }
+  const load = async () => { try { setLoading(true); await Promise.all([loadUsers(), loadOrgs()]) } finally { setLoading(false) } }
+  const loadUsers = async () => { try { setUsers(await profileService.getProfiles()) } catch (e) { toast('Failed to load users', 'error') } }
+  const loadOrgs = async () => { try { setOrganizations(await organizationService.getOrganizations()) } catch (e) { toast('Failed to load organizations', 'error') } }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
-
+    e.preventDefault(); if (!user) return
     try {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        throw new Error('Not authenticated')
-      }
-
-      console.log('Creating user with data:', {
-        email: formData.email,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        role: formData.role,
-        organization: formData.organization || null,
-        phone: formData.phone || null
+      if (!session) throw new Error('Not authenticated')
+      const res = await fetch(`${(import.meta as any).env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}`, 'apikey': (import.meta as any).env.VITE_SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, firstName: formData.firstName, lastName: formData.lastName, role: formData.role, organization: formData.organization || null, phone: formData.phone || null })
       })
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            role: formData.role,
-            organization: formData.organization || null,
-            phone: formData.phone || null
-          })
-        }
-      )
-
-      console.log('Response status:', response.status)
-      console.log('Response headers:', Object.fromEntries(response.headers.entries()))
-
-      let result
-      try {
-        const text = await response.text()
-        console.log('Response text:', text)
-        result = JSON.parse(text)
-      } catch (parseError) {
-        console.error('Failed to parse response:', parseError)
-        throw new Error('Invalid response from server')
-      }
-
-      console.log('Create user result:', result)
-
-      if (!response.ok) {
-        throw new Error(result.error || result.message || 'Failed to create user')
-      }
-
-      showToast(
-        `User ${formData.firstName} ${formData.lastName} created successfully with default password: Welcome123!`,
-        'success'
-      )
-
-      resetForm()
+      const result = JSON.parse(await res.text())
+      if (!res.ok) throw new Error(result.error || 'Failed to create user')
+      toast(`${formData.firstName} ${formData.lastName} created — default password: Welcome123!`, 'success')
+      setFormData({ email: '', firstName: '', lastName: '', role: 'caregiver', organization: '', phone: '' }); setShowUserForm(false)
       await loadUsers()
-    } catch (err) {
-      console.error('Error creating user:', err)
-      showToast(err instanceof Error ? err.message : 'Failed to create user', 'error')
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      email: '',
-      firstName: '',
-      lastName: '',
-      role: 'caregiver',
-      organization: '',
-      phone: ''
-    })
-    setShowUserForm(false)
-  }
-
-  const handleToggleActive = async (userId: string, currentStatus: boolean) => {
-    try {
-      await profileService.updateProfile(userId, { is_active: !currentStatus })
-      showToast(
-        `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
-        'success'
-      )
-      await loadUsers()
-    } catch (err) {
-      console.error('Error updating user:', err)
-      showToast('Failed to update user status', 'error')
-    }
+    } catch (e) { toast(e instanceof Error ? e.message : 'Failed to create user', 'error') }
   }
 
   const handleOrgSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    try {
-      await organizationService.createOrganization(orgFormData.name, orgFormData.description)
-      showToast(`Organization "${orgFormData.name}" created successfully`, 'success')
-      setOrgFormData({ name: '', description: '' })
-      setShowOrgForm(false)
-      await loadOrganizations()
-    } catch (err) {
-      console.error('Error creating organization:', err)
-      showToast(err instanceof Error ? err.message : 'Failed to create organization', 'error')
-    }
+    try { await organizationService.createOrganization(orgFormData.name, orgFormData.description); toast(`Organization "${orgFormData.name}" created`, 'success'); setOrgFormData({ name: '', description: '' }); setShowOrgForm(false); await loadOrgs() }
+    catch (e) { toast(e instanceof Error ? e.message : 'Failed to create organization', 'error') }
   }
 
-  const handleToggleOrgActive = async (orgId: string, currentStatus: boolean) => {
-    try {
-      await organizationService.updateOrganization(orgId, { is_active: !currentStatus })
-      showToast(
-        `Organization ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
-        'success'
-      )
-      await loadOrganizations()
-    } catch (err) {
-      console.error('Error updating organization:', err)
-      showToast('Failed to update organization status', 'error')
-    }
-  }
+  const handleToggleUser = async (id: string, active: boolean) => { try { await profileService.updateProfile(id, { is_active: !active }); toast(`User ${!active ? 'activated' : 'deactivated'}`, 'success'); await loadUsers() } catch (e) { toast('Failed to update user', 'error') } }
+  const handleToggleOrg = async (id: string, active: boolean) => { try { await organizationService.updateOrganization(id, { is_active: !active }); toast(`Organization ${!active ? 'activated' : 'deactivated'}`, 'success'); await loadOrgs() } catch (e) { toast('Failed to update organization', 'error') } }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Navigation />
-        <main className="flex-1 p-8">
-          <div className="text-center">Loading...</div>
-        </main>
-        <Footer />
-      </div>
-    )
-  }
+  const roleStyle = (role: string) => ({ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: role === 'admin' ? '#FEF2F2' : role === 'manager' ? '#EFF6FF' : '#F0FDF4', color: role === 'admin' ? '#DC2626' : role === 'manager' ? '#2563EB' : '#16A34A' } as React.CSSProperties)
+  const statusStyle = (active: boolean) => ({ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: active ? '#F0FDF4' : '#F1F5F9', color: active ? '#16A34A' : '#94A3B8' } as React.CSSProperties)
 
   return (
     <MainLayout>
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 32 }}>
 
-      <main className="flex-1 p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Admin Management</h1>
-              <p className="text-slate-600 mt-2">Create and manage users, organizations, and roles</p>
-            </div>
-            <button
-              onClick={() => activeTab === 'users' ? setShowUserForm(true) : setShowOrgForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              {activeTab === 'users' ? 'Create User' : 'Create Organization'}
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, ...anim() }}>
+          <div>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', margin: '0 0 4px' }}>Admin Management</h1>
+            <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>Create and manage users, organizations, and roles</p>
+          </div>
+          <button onClick={() => activeTab === 'users' ? setShowUserForm(true) : setShowOrgForm(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            <Plus size={18} /> {activeTab === 'users' ? 'Create User' : 'Create Organization'}
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #F1F5F9', marginBottom: 24, ...anim(60) }}>
+          {([['users', <Users size={16} />, 'Users'], ['organizations', <Building2 size={16} />, 'Organizations']] as const).map(([tab, icon, label]) => (
+            <button key={tab} onClick={() => setActiveTab(tab as TabType)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: 'none', border: 'none', borderBottom: activeTab === tab ? '2px solid #2563EB' : '2px solid transparent', color: activeTab === tab ? '#2563EB' : '#64748B', fontWeight: 600, fontSize: 14, cursor: 'pointer', transition: 'all 0.15s', marginBottom: -1 }}>
+              {icon}{label}
             </button>
-          </div>
+          ))}
+        </div>
 
-          <div className="mb-6">
-            <div className="flex gap-2 border-b border-slate-200">
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-                  activeTab === 'users'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-                Users
-              </button>
-              <button
-                onClick={() => setActiveTab('organizations')}
-                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
-                  activeTab === 'organizations'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Building2 className="w-5 h-5" />
-                Organizations
-              </button>
+        {/* User form */}
+        {activeTab === 'users' && showUserForm && (
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #F1F5F9', padding: 24, marginBottom: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', ...anim() }}>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: '0 0 16px' }}>Create New User</h2>
+            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '12px 14px', marginBottom: 20, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <Key size={16} color="#2563EB" style={{ marginTop: 1, flexShrink: 0 }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#1D4ED8', margin: '0 0 2px' }}>Default Password</p>
+                <p style={{ fontSize: 13, color: '#3B82F6', margin: 0 }}>New users are created with: <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>Welcome123!</span> — they can change it after login.</p>
+              </div>
             </div>
+            <form onSubmit={handleSubmit}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div><label style={labelS}>First Name</label><input type="text" value={formData.firstName} onChange={e => setFormData({ ...formData, firstName: e.target.value })} style={inputS} required /></div>
+                <div><label style={labelS}>Last Name</label><input type="text" value={formData.lastName} onChange={e => setFormData({ ...formData, lastName: e.target.value })} style={inputS} required /></div>
+              </div>
+              <div style={{ marginBottom: 16 }}><label style={labelS}>Email</label><input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} style={inputS} required /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div><label style={labelS}>Role</label>
+                  <select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as any })} style={inputS}>
+                    <option value="caregiver">Caregiver</option><option value="manager">Manager</option><option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div><label style={labelS}>Organization</label>
+                  <select value={formData.organization} onChange={e => setFormData({ ...formData, organization: e.target.value })} style={inputS}>
+                    <option value="">Select organization (optional)</option>
+                    {organizations.filter(o => o.is_active).map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom: 20 }}><label style={labelS}>Phone <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label><input type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} style={inputS} /></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Create User</button>
+                <button type="button" onClick={() => setShowUserForm(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
           </div>
+        )}
 
-          {activeTab === 'users' && showUserForm && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Create New User</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <div className="flex items-start gap-3">
-                      <Key className="w-5 h-5 text-blue-600 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-900">Default Password</p>
-                        <p className="text-sm text-blue-700">
-                          All new users will be created with the password: <span className="font-mono font-semibold">Welcome123!</span>
-                        </p>
-                        <p className="text-xs text-blue-600 mt-1">
-                          Users can change their password after logging in through their profile settings.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+        {/* Org form */}
+        {activeTab === 'organizations' && showOrgForm && (
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #F1F5F9', padding: 24, marginBottom: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', ...anim() }}>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: '0 0 20px' }}>Create New Organization</h2>
+            <form onSubmit={handleOrgSubmit}>
+              <div style={{ marginBottom: 16 }}><label style={labelS}>Organization Name</label><input type="text" value={orgFormData.name} onChange={e => setOrgFormData({ ...orgFormData, name: e.target.value })} style={inputS} placeholder="e.g., North Division" required /></div>
+              <div style={{ marginBottom: 20 }}><label style={labelS}>Description <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label><textarea value={orgFormData.description} onChange={e => setOrgFormData({ ...orgFormData, description: e.target.value })} style={{ ...inputS, resize: 'vertical' }} rows={3} /></div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Create Organization</button>
+                <button type="button" onClick={() => setShowOrgForm(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        )}
 
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Role
-                    </label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    >
-                      <option value="caregiver">Caregiver</option>
-                      <option value="manager">Manager</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Organization
-                    </label>
-                    <select
-                      value={formData.organization}
-                      onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select organization (optional)</option>
-                      {organizations.filter(org => org.is_active).map(org => (
-                        <option key={org.id} value={org.name}>{org.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional"
-                    />
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Create User
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeTab === 'organizations' && showOrgForm && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>Create New Organization</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleOrgSubmit} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Organization Name
-                    </label>
-                    <input
-                      type="text"
-                      value={orgFormData.name}
-                      onChange={(e) => setOrgFormData({ ...orgFormData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g., North Division, East Region"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={orgFormData.description}
-                      onChange={(e) => setOrgFormData({ ...orgFormData, description: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional description"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Create Organization
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOrgFormData({ name: '', description: '' })
-                        setShowOrgForm(false)
-                      }}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeTab === 'users' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Users</CardTitle>
-              </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Name</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Email</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Role</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Organization</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Status</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Actions</th>
-                    </tr>
+        {/* Users table */}
+        {activeTab === 'users' && (
+          loading ? <div style={{ height: 200, borderRadius: 14, background: 'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} /> : (
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(120) }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={17} color="#64748B" />
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>Users</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{users.length} total</span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
+                    <tr>{['Name', 'Email', 'Role', 'Organization', 'Status', 'Actions'].map(h => <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-b border-slate-100">
-                        <td className="py-3 px-4 text-sm text-slate-900">
-                          {user.first_name} {user.last_name}
+                    {users.map(u => (
+                      <tr key={u.id} style={{ borderBottom: '1px solid #F8FAFC', transition: 'background 0.1s' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FAFBFC'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                        <td style={{ padding: '13px 16px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#1E3A5F,#2563EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{u.first_name[0]}{u.last_name[0]}</div>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{u.first_name} {u.last_name}</span>
+                          </div>
                         </td>
-                        <td className="py-3 px-4 text-sm text-slate-600">{user.email}</td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full ${
-                            user.role === 'admin'
-                              ? 'bg-red-100 text-red-700'
-                              : user.role === 'manager'
-                              ? 'bg-blue-100 text-blue-700'
-                              : 'bg-green-100 text-green-700'
-                          }`}>
-                            <Shield className="w-3 h-3" />
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-slate-600">
-                          {user.organization || '-'}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                            user.is_active
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-slate-200 text-slate-700'
-                          }`}>
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => handleToggleActive(user.id, user.is_active)}
-                            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                          >
-                            {user.is_active ? 'Deactivate' : 'Activate'}
+                        <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B' }}>{u.email}</td>
+                        <td style={{ padding: '13px 16px' }}><span style={roleStyle(u.role)}><Shield size={11} />{u.role}</span></td>
+                        <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B' }}>{u.organization || '—'}</td>
+                        <td style={{ padding: '13px 16px' }}><span style={statusStyle(u.is_active)}><span style={{ width: 6, height: 6, borderRadius: '50%', background: u.is_active ? '#16A34A' : '#CBD5E1', display: 'inline-block' }} />{u.is_active ? 'Active' : 'Inactive'}</span></td>
+                        <td style={{ padding: '13px 16px' }}>
+                          <button onClick={() => handleToggleUser(u.id, u.is_active)} style={{ padding: '5px 12px', background: u.is_active ? '#FEF2F2' : '#F0FDF4', color: u.is_active ? '#DC2626' : '#16A34A', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                            {u.is_active ? 'Deactivate' : 'Activate'}
                           </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {users.length === 0 && <div style={{ textAlign: 'center', padding: '48px 0', color: '#94A3B8', fontSize: 14 }}>No users yet.</div>}
               </div>
-            </CardContent>
-          </Card>
-          )}
+            </div>
+          )
+        )}
 
-          {activeTab === 'organizations' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Organizations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-slate-200">
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Name</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Description</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Users</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Status</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium text-slate-700">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {organizations.map((org) => {
-                        const userCount = users.filter(u => u.organization === org.name).length
-                        return (
-                          <tr key={org.id} className="border-b border-slate-100">
-                            <td className="py-3 px-4 text-sm font-medium text-slate-900">
-                              <div className="flex items-center gap-2">
-                                <Building2 className="w-4 h-4 text-slate-400" />
-                                {org.name}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-sm text-slate-600">
-                              {org.description || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-sm text-slate-600">
-                              {userCount} {userCount === 1 ? 'user' : 'users'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                                org.is_active
-                                  ? 'bg-green-100 text-green-700'
-                                  : 'bg-slate-200 text-slate-700'
-                              }`}>
-                                {org.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <button
-                                onClick={() => handleToggleOrgActive(org.id, org.is_active)}
-                                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                              >
-                                {org.is_active ? 'Deactivate' : 'Activate'}
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                      {organizations.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-slate-500">
-                            No organizations yet. Click "Create Organization" to add one.
+        {/* Organizations table */}
+        {activeTab === 'organizations' && (
+          loading ? <div style={{ height: 200, borderRadius: 14, background: 'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s ease infinite' }} /> : (
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(120) }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid #F8FAFC', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Building2 size={17} color="#64748B" />
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>Organizations</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{organizations.length} total</span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead style={{ background: '#F8FAFC', borderBottom: '1px solid #F1F5F9' }}>
+                    <tr>{['Name', 'Description', 'Users', 'Status', 'Actions'].map(h => <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {organizations.map(org => {
+                      const uc = users.filter(u => u.organization === org.name).length
+                      return (
+                        <tr key={org.id} style={{ borderBottom: '1px solid #F8FAFC', transition: 'background 0.1s' }}
+                          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#FAFBFC'}
+                          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                          <td style={{ padding: '13px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ width: 32, height: 32, background: '#F0FDF4', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Building2 size={16} color="#16A34A" /></div>
+                              <span style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{org.name}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B' }}>{org.description || '—'}</td>
+                          <td style={{ padding: '13px 16px', fontSize: 13, color: '#64748B' }}>{uc} {uc === 1 ? 'user' : 'users'}</td>
+                          <td style={{ padding: '13px 16px' }}><span style={statusStyle(org.is_active)}><span style={{ width: 6, height: 6, borderRadius: '50%', background: org.is_active ? '#16A34A' : '#CBD5E1', display: 'inline-block' }} />{org.is_active ? 'Active' : 'Inactive'}</span></td>
+                          <td style={{ padding: '13px 16px' }}>
+                            <button onClick={() => handleToggleOrg(org.id, org.is_active)} style={{ padding: '5px 12px', background: org.is_active ? '#FEF2F2' : '#F0FDF4', color: org.is_active ? '#DC2626' : '#16A34A', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                              {org.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </main>
-
+                      )
+                    })}
+                    {organizations.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: '48px 0', color: '#94A3B8', fontSize: 14 }}>No organizations yet.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
+      </div>
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </MainLayout>
   )

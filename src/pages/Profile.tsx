@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react'
 import { MainLayout } from '../components/MainLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/Card'
 import { CourseCompletionModal } from '../components/CourseCompletionModal'
 import { ToastContainer } from '../components/ToastContainer'
 import { useAuth } from '../contexts/AuthContext'
@@ -10,9 +9,12 @@ import { complianceService } from '../services/compliance'
 import { organizationService, type AgencySettings } from '../services/organizations'
 import { supabase } from '../services/supabase'
 import type { CourseAssignment, LearningPathAssignment, ComplianceStatus } from '../types'
-import { User, Mail, Building2, Shield, BookOpen, FolderTree, CircleCheck as CheckCircle, Clock, CircleAlert as AlertCircle, ExternalLink, Pause, Play, Key, Globe, Phone, MapPin, CircleUser as UserCircle } from 'lucide-react'
+import { User, Mail, Building2, Shield, BookOpen, FolderTree, CheckCircle, Clock, AlertCircle, ExternalLink, Play, Key, Globe, Phone, MapPin } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
+const anim = (d = 0): React.CSSProperties => ({ animation: 'fadeSlideUp 0.45s ease both', animationDelay: `${d}ms` })
+const inputS: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 14, color: '#0F172A', outline: 'none', boxSizing: 'border-box' }
+const labelS: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }
 
 export function Profile() {
   const { profile } = useAuth()
@@ -23,723 +25,333 @@ export function Profile() {
   const [loading, setLoading] = useState(true)
   const [completingAssignment, setCompletingAssignment] = useState<CourseAssignment | null>(null)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
-  const [showOrgSettingsForm, setShowOrgSettingsForm] = useState(false)
-  const [passwordData, setPasswordData] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  })
-  const [orgSettingsData, setOrgSettingsData] = useState({
-    address: '',
-    website: '',
-    phone: '',
-    contact_name: '',
-    contact_email: ''
-  })
+  const [showOrgForm, setShowOrgForm] = useState(false)
+  const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' })
+  const [orgData, setOrgData] = useState({ address: '', website: '', phone: '', contact_name: '', contact_email: '' })
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: ToastType }>>([])
   const [toastId, setToastId] = useState(0)
 
-  const showToast = (message: string, type: ToastType = 'info') => {
-    const id = toastId
-    setToastId(prev => prev + 1)
-    setToasts(prev => [...prev, { id, message, type }])
-  }
+  const toast = (message: string, type: ToastType = 'info') => { const id = toastId; setToastId(p => p + 1); setToasts(p => [...p, { id, message, type }]) }
+  const removeToast = (id: number) => setToasts(p => p.filter(t => t.id !== id))
 
-  const removeToast = (id: number) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id))
-  }
+  useEffect(() => { loadData() }, [profile?.id])
 
-  useEffect(() => {
-    loadProfileData()
-  }, [profile?.id])
-
-  const loadProfileData = async () => {
+  const loadData = async () => {
     if (!profile?.id) return
-
     try {
       setLoading(true)
       if (profile.role === 'caregiver') {
-        const [courses, paths, compliance] = await Promise.all([
-          courseService.getCaregiverAssignments(profile.id),
-          learningPathService.getAssignments(profile.id),
-          complianceService.getComplianceStatus(profile.id)
-        ])
-        setCourseAssignments(courses)
-        setPathAssignments(paths)
-        setComplianceStatus(compliance)
+        const [c, p, cs] = await Promise.all([courseService.getCaregiverAssignments(profile.id), learningPathService.getAssignments(profile.id), complianceService.getComplianceStatus(profile.id)])
+        setCourseAssignments(c); setPathAssignments(p); setComplianceStatus(cs)
       }
       if ((profile.role === 'admin' || profile.role === 'manager') && profile.organization) {
-        const settings = await organizationService.getAgencySettings(profile.organization)
-        if (settings) {
-          setAgencySettings(settings)
-          setOrgSettingsData({
-            address: settings.address || '',
-            website: settings.website || '',
-            phone: settings.phone || '',
-            contact_name: settings.contact_name || '',
-            contact_email: settings.contact_email || ''
-          })
-        }
+        const s = await organizationService.getAgencySettings(profile.organization)
+        if (s) { setAgencySettings(s); setOrgData({ address: s.address || '', website: s.website || '', phone: s.phone || '', contact_name: s.contact_name || '', contact_email: s.contact_email || '' }) }
       }
-    } catch (error) {
-      console.error('Error loading profile data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleStartCourse = async (assignmentId: string) => {
-    try {
-      await courseService.startCourse(assignmentId)
-      await loadProfileData()
-    } catch (error) {
-      console.error('Error starting course:', error)
-    }
+    } catch (e) { console.error(e) } finally { setLoading(false) }
   }
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      showToast('New passwords do not match', 'error')
-      return
-    }
-
-    if (passwordData.newPassword.length < 8) {
-      showToast('New password must be at least 8 characters', 'error')
-      return
-    }
-
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword
-      })
-
-      if (error) throw error
-
-      showToast('Password changed successfully', 'success')
-      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
-      setShowPasswordForm(false)
-    } catch (error: any) {
-      console.error('Error changing password:', error)
-      showToast(error.message || 'Failed to change password', 'error')
-    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) { toast('Passwords do not match', 'error'); return }
+    if (passwordData.newPassword.length < 8) { toast('Password must be at least 8 characters', 'error'); return }
+    try { const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword }); if (error) throw error; toast('Password changed successfully', 'success'); setPasswordData({ newPassword: '', confirmPassword: '' }); setShowPasswordForm(false) }
+    catch (e: any) { toast(e.message || 'Failed to change password', 'error') }
   }
 
-  const handleOrgSettingsUpdate = async (e: React.FormEvent) => {
+  const handleOrgUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!profile?.organization) {
-      showToast('No organization found', 'error')
-      return
-    }
-
-    try {
-      await organizationService.updateAgencySettings(profile.organization, orgSettingsData)
-      showToast('Organization settings updated successfully', 'success')
-      setShowOrgSettingsForm(false)
-      await loadProfileData()
-    } catch (error: any) {
-      console.error('Error updating organization settings:', error)
-      showToast(error.message || 'Failed to update organization settings', 'error')
-    }
+    if (!profile?.organization) { toast('No organization found', 'error'); return }
+    try { await organizationService.updateAgencySettings(profile.organization, orgData); toast('Organization settings updated', 'success'); setShowOrgForm(false); await loadData() }
+    catch (e: any) { toast(e.message || 'Failed to update settings', 'error') }
   }
 
-  if (loading) {
-    return (
-      <MainLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            <p className="mt-4 text-gray-600">Loading profile...</p>
-          </div>
-        </div>
-      </MainLayout>
-    )
-  }
+  const roleCfg = (r?: string) => r === 'admin' ? { bg: '#FEF2F2', c: '#DC2626' } : r === 'manager' ? { bg: '#EFF6FF', c: '#2563EB' } : { bg: '#F0FDF4', c: '#16A34A' }
+
+  if (loading) return (
+    <MainLayout>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div style={{ width: 40, height: 40, border: '3px solid #EFF6FF', borderTop: '3px solid #2563EB', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </MainLayout>
+  )
 
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-4xl font-bold text-gray-900 mb-8">My Profile</h1>
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 32 }}>
+        <div style={{ marginBottom: 28, ...anim() }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', margin: '0 0 4px' }}>My Profile</h1>
+          <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>Manage your account and settings</p>
+        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Personal Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <User className="text-gray-400 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-600">Name</p>
-                    <p className="font-medium text-gray-900">
-                      {profile?.first_name} {profile?.last_name}
-                    </p>
-                  </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }}>
+          {/* Left: Personal Info */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(60) }}>
+              {/* Avatar banner */}
+              <div style={{ background: 'linear-gradient(135deg,#1E3A5F,#2563EB)', padding: '24px 20px 48px', position: 'relative' }}>
+                <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', border: '2px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 20, fontWeight: 800 }}>
+                  {profile?.first_name?.[0]}{profile?.last_name?.[0]}
                 </div>
-
-                <div className="flex items-start gap-3">
-                  <Mail className="text-gray-400 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-600">Email</p>
-                    <p className="font-medium text-gray-900">{profile?.email}</p>
-                  </div>
+              </div>
+              <div style={{ padding: '0 20px 20px', marginTop: -24 }}>
+                <div style={{ background: 'white', borderRadius: 10, padding: '12px 14px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', marginBottom: 16 }}>
+                  <p style={{ fontSize: 16, fontWeight: 800, color: '#0F172A', margin: '0 0 2px' }}>{profile?.first_name} {profile?.last_name}</p>
+                  <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{profile?.email}</p>
                 </div>
-
-                {profile?.organization && (
-                  <div className="flex items-start gap-3">
-                    <Building2 className="text-gray-400 mt-1" size={20} />
-                    <div>
-                      <p className="text-sm text-gray-600">Organization</p>
-                      <p className="font-medium text-gray-900">{profile.organization}</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {[
+                    { icon: <Mail size={14} />, label: 'Email', value: profile?.email },
+                    ...(profile?.organization ? [{ icon: <Building2 size={14} />, label: 'Organization', value: profile.organization }] : []),
+                    { icon: <Shield size={14} />, label: 'Role', value: profile?.role },
+                  ].map(({ icon, label, value }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                      <div style={{ width: 26, height: 26, background: '#F8FAFC', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94A3B8' }}>{icon}</div>
+                      <div>
+                        <p style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: '#0F172A', margin: 0, textTransform: 'capitalize' }}>{value}</p>
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                <div className="flex items-start gap-3">
-                  <Shield className="text-gray-400 mt-1" size={20} />
-                  <div>
-                    <p className="text-sm text-gray-600">Role</p>
-                    <p className="font-medium text-gray-900 capitalize">{profile?.role}</p>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Account Status</span>
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                        profile?.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}
-                    >
+                  ))}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid #F8FAFC' }}>
+                    <span style={{ fontSize: 12, color: '#94A3B8' }}>Status</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: profile?.is_active ? '#F0FDF4' : '#FEF2F2', color: profile?.is_active ? '#16A34A' : '#DC2626' }}>
                       {profile?.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
+                  {profile?.role && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#94A3B8' }}>Access Level</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20, background: roleCfg(profile.role).bg, color: roleCfg(profile.role).c, textTransform: 'capitalize' }}>{profile.role}</span>
+                    </div>
+                  )}
                 </div>
+              </div>
+            </div>
 
-                <div className="pt-4 border-t border-gray-200">
-                  <button
-                    onClick={() => setShowPasswordForm(!showPasswordForm)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-                  >
-                    <Key className="w-4 h-4" />
-                    Change Password
-                  </button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {showPasswordForm && (
-              <Card className="mt-6">
-                <CardHeader>
-                  <CardTitle>Change Password</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handlePasswordChange} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        New Password
-                      </label>
-                      <input
-                        type="password"
-                        value={passwordData.newPassword}
-                        onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="At least 8 characters"
-                        required
-                        minLength={8}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-2">
-                        Confirm New Password
-                      </label>
-                      <input
-                        type="password"
-                        value={passwordData.confirmPassword}
-                        onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Retype new password"
-                        required
-                        minLength={8}
-                      />
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        type="submit"
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        Update Password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPasswordForm(false)
-                          setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
-                        }}
-                        className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            )}
+            {/* Change password */}
+            <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', padding: 16, ...anim(120) }}>
+              <button onClick={() => setShowPasswordForm(!showPasswordForm)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', background: '#F8FAFC', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, color: '#475569', cursor: 'pointer', transition: 'background 0.15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#F1F5F9'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#F8FAFC'}>
+                <Key size={16} /> Change Password
+              </button>
+              {showPasswordForm && (
+                <form onSubmit={handlePasswordChange} style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div><label style={labelS}>New Password</label><input type="password" value={passwordData.newPassword} onChange={e => setPasswordData({ ...passwordData, newPassword: e.target.value })} style={inputS} placeholder="Min 8 characters" required minLength={8} /></div>
+                  <div><label style={labelS}>Confirm Password</label><input type="password" value={passwordData.confirmPassword} onChange={e => setPasswordData({ ...passwordData, confirmPassword: e.target.value })} style={inputS} placeholder="Retype password" required minLength={8} /></div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="submit" style={{ flex: 1, padding: '8px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Update</button>
+                    <button type="button" onClick={() => { setShowPasswordForm(false); setPasswordData({ newPassword: '', confirmPassword: '' }) }} style={{ flex: 1, padding: '8px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
 
-          {profile?.role === 'caregiver' && (
-            <div className="lg:col-span-2 space-y-6">
-              {complianceStatus && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Training Compliance</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-gray-900">
-                          {complianceStatus.total_assignments}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">Total</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-green-600">
-                          {complianceStatus.completed}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">Completed</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-yellow-600">
-                          {complianceStatus.pending}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">Pending</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-2xl font-bold text-red-600">
-                          {complianceStatus.overdue}
-                        </p>
-                        <p className="text-sm text-gray-600 mt-1">Overdue</p>
-                      </div>
-                    </div>
+          {/* Right: Role-specific content */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                    <div className="mt-6 pt-6 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Overall Status</span>
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                            complianceStatus.status === 'compliant'
-                              ? 'bg-green-100 text-green-800'
-                              : complianceStatus.status === 'overdue'
-                              ? 'bg-red-100 text-red-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          {complianceStatus.status === 'compliant'
-                            ? 'Compliant'
-                            : complianceStatus.status === 'overdue'
-                            ? 'Overdue'
-                            : 'Action Required'}
-                        </span>
-                      </div>
+            {/* CAREGIVER: compliance summary */}
+            {profile?.role === 'caregiver' && complianceStatus && (
+              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', padding: 20, ...anim(80) }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>Training Compliance</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+                  {[
+                    { label: 'Total', val: complianceStatus.total_assignments, color: '#2563EB' },
+                    { label: 'Completed', val: complianceStatus.completed, color: '#16A34A' },
+                    { label: 'Pending', val: complianceStatus.pending, color: '#D97706' },
+                    { label: 'Overdue', val: complianceStatus.overdue, color: '#DC2626' },
+                  ].map(s => (
+                    <div key={s.label} style={{ background: '#F8FAFC', borderRadius: 10, padding: '12px', textAlign: 'center' }}>
+                      <p style={{ fontSize: 24, fontWeight: 800, color: s.color, margin: '0 0 2px' }}>{s.val}</p>
+                      <p style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, margin: 0 }}>{s.label}</p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTop: '1px solid #F8FAFC' }}>
+                  <span style={{ fontSize: 13, color: '#64748B', fontWeight: 600 }}>Overall Status</span>
+                  {(() => {
+                    const s = complianceStatus.status; const cfg = s === 'compliant' ? { bg: '#F0FDF4', c: '#16A34A', label: 'Compliant' } : s === 'overdue' ? { bg: '#FEF2F2', c: '#DC2626', label: 'Overdue' } : { bg: '#FFFBEB', c: '#D97706', label: 'Action Required' }
+                    return <span style={{ fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20, background: cfg.bg, color: cfg.c }}>{cfg.label}</span>
+                  })()}
+                </div>
+              </div>
+            )}
 
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="text-blue-600" size={20} />
-                    <CardTitle>My Course Assignments</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
+            {/* CAREGIVER: course assignments */}
+            {profile?.role === 'caregiver' && (
+              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(140) }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid #F8FAFC' }}>
+                  <BookOpen size={17} color="#2563EB" />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>My Course Assignments</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{courseAssignments.length}</span>
+                </div>
+                <div style={{ padding: 16 }}>
                   {courseAssignments.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No course assignments</p>
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: '#94A3B8', fontSize: 14 }}>No course assignments</div>
                   ) : (
-                    <div className="space-y-3">
-                      {courseAssignments.map((assignment) => {
-                        const isOverdue = !assignment.completion_date && new Date(assignment.due_date) < new Date()
-                        const isCompleted = assignment.status === 'completed' || !!assignment.completion_date
-                        const isInProgress = assignment.status === 'in_progress'
-                        const isNotStarted = !assignment.status || assignment.status === 'not_started'
-
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {courseAssignments.map(a => {
+                        const isDone = a.status === 'completed' || !!a.completion_date
+                        const isOD = !a.completion_date && new Date(a.due_date) < new Date()
+                        const isIP = a.status === 'in_progress'
+                        const cfg = isDone ? { bg: '#F0FDF4', border: '#BBF7D0', ic: <CheckCircle size={12} />, c: '#16A34A', label: 'Completed' }
+                          : isOD ? { bg: '#FEF2F2', border: '#FECACA', ic: <AlertCircle size={12} />, c: '#DC2626', label: 'Overdue' }
+                          : isIP ? { bg: '#FFFBEB', border: '#FDE68A', ic: <Clock size={12} />, c: '#D97706', label: 'In Progress' }
+                          : { bg: '#EFF6FF', border: '#BFDBFE', ic: <Clock size={12} />, c: '#2563EB', label: 'Not Started' }
                         return (
-                          <div
-                            key={assignment.id}
-                            className={`p-4 rounded-lg border-2 ${
-                              isCompleted
-                                ? 'border-green-200 bg-green-50'
-                                : isOverdue
-                                ? 'border-red-200 bg-red-50'
-                                : isInProgress
-                                ? 'border-yellow-200 bg-yellow-50'
-                                : 'border-blue-200 bg-blue-50'
-                            }`}
-                          >
-                            <div className="flex items-start gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-semibold text-gray-900">
-                                    {assignment.course?.title}
-                                  </h4>
-                                  {isCompleted ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 text-xs font-medium rounded">
-                                      <CheckCircle size={14} />
-                                      Completed
-                                    </span>
-                                  ) : isInProgress ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded">
-                                      <Pause size={14} />
-                                      In Progress
-                                    </span>
-                                  ) : isOverdue ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                                      <AlertCircle size={14} />
-                                      Overdue
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                                      <Clock size={14} />
-                                      Not Started
-                                    </span>
-                                  )}
+                          <div key={a.id} style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 12, padding: '14px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                                  <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{a.course?.title}</span>
+                                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'white', color: cfg.c }}>{cfg.ic}{cfg.label}</span>
                                 </div>
-                                {assignment.course?.description && (
-                                  <p className="text-sm text-gray-600 mb-2">
-                                    {assignment.course.description}
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-3 text-sm">
-                                  <span className={`font-medium ${isOverdue ? 'text-red-700' : 'text-gray-600'}`}>
-                                    Due: {new Date(assignment.due_date).toLocaleDateString()}
-                                  </span>
-                                  {assignment.course?.category && (
-                                    <span className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs">
-                                      {assignment.course.category}
-                                    </span>
-                                  )}
-                                  {assignment.course?.ce_hours && (
-                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                                      {assignment.course.ce_hours} CE hours
-                                    </span>
-                                  )}
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, fontSize: 12 }}>
+                                  <span style={{ fontWeight: 600, color: isOD ? '#DC2626' : '#64748B' }}>Due: {new Date(a.due_date).toLocaleDateString()}</span>
+                                  {a.course?.category && <span style={{ padding: '1px 8px', background: 'white', borderRadius: 20, color: '#2563EB', fontWeight: 600 }}>{a.course.category}</span>}
+                                  {a.course?.ce_hours && <span style={{ padding: '1px 8px', background: 'white', borderRadius: 20, color: '#16A34A', fontWeight: 600 }}>{a.course.ce_hours} CE hrs</span>}
                                 </div>
-                                {isCompleted && assignment.completion_date && (
-                                  <p className="text-sm text-green-700 font-medium mt-2">
-                                    Completed: {new Date(assignment.completion_date).toLocaleDateString()}
-                                  </p>
-                                )}
+                                {isDone && a.completion_date && <p style={{ fontSize: 12, color: '#16A34A', fontWeight: 600, margin: '6px 0 0' }}>Completed: {new Date(a.completion_date).toLocaleDateString()}</p>}
                               </div>
-                              <div className="flex flex-col gap-2">
-                                {!isCompleted && assignment.course?.external_url && (
-                                  <>
-                                    <a
-                                      href={assignment.course.external_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                                    >
-                                      <ExternalLink size={16} />
-                                      View Course
-                                    </a>
-                                    {isNotStarted && (
-                                      <button
-                                        onClick={() => handleStartCourse(assignment.id)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium"
-                                      >
-                                        <Play size={16} />
-                                        Start
-                                      </button>
-                                    )}
-                                    {isInProgress && (
-                                      <button
-                                        onClick={() => setCompletingAssignment(assignment)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                                      >
-                                        <CheckCircle size={16} />
-                                        Mark Complete
-                                      </button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
+                              {!isDone && a.course?.external_url && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                                  <a href={a.course.external_url} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}><ExternalLink size={12} />View</a>
+                                  {(!a.status || a.status === 'not_started') && <button onClick={() => courseService.startCourse(a.id).then(loadData)} style={{ padding: '6px 12px', background: '#D97706', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}><Play size={12} /></button>}
+                                  {isIP && <button onClick={() => setCompletingAssignment(a)} style={{ padding: '6px 12px', background: '#16A34A', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Complete</button>}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
                       })}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
+            )}
 
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <FolderTree className="text-purple-600" size={20} />
-                    <CardTitle>My Learning Paths</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
+            {/* CAREGIVER: learning paths */}
+            {profile?.role === 'caregiver' && (
+              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(200) }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '16px 20px', borderBottom: '1px solid #F8FAFC' }}>
+                  <FolderTree size={17} color="#7C3AED" />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>My Learning Paths</span>
+                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>{pathAssignments.length}</span>
+                </div>
+                <div style={{ padding: 16 }}>
                   {pathAssignments.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No learning path assignments</p>
+                    <div style={{ textAlign: 'center', padding: '32px 0', color: '#94A3B8', fontSize: 14 }}>No learning path assignments</div>
                   ) : (
-                    <div className="space-y-3">
-                      {pathAssignments.map((assignment) => (
-                        <div
-                          key={assignment.id}
-                          className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg"
-                        >
-                          <div className="p-2 bg-purple-100 rounded flex-shrink-0">
-                            <FolderTree className="text-purple-600" size={16} />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium text-gray-900">
-                              {assignment.learning_path?.name}
-                            </h4>
-                            {assignment.learning_path?.description && (
-                              <p className="text-sm text-gray-600 mt-1">
-                                {assignment.learning_path.description}
-                              </p>
-                            )}
-                            <div className="flex items-center gap-3 mt-2">
-                              {assignment.due_date && (
-                                <span className="text-sm text-gray-600">
-                                  Due: {new Date(assignment.due_date).toLocaleDateString()}
-                                </span>
-                              )}
-                              <span
-                                className={`text-xs px-2 py-1 rounded font-medium ${
-                                  assignment.status === 'completed'
-                                    ? 'bg-green-100 text-green-700'
-                                    : assignment.status === 'in_progress'
-                                    ? 'bg-yellow-100 text-yellow-700'
-                                    : 'bg-slate-100 text-slate-700'
-                                }`}
-                              >
-                                {assignment.status === 'completed'
-                                  ? 'Completed'
-                                  : assignment.status === 'in_progress'
-                                  ? 'In Progress'
-                                  : 'Assigned'}
-                              </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {pathAssignments.map(a => {
+                        const sc = a.status === 'completed' ? { bg: '#F0FDF4', border: '#BBF7D0', c: '#16A34A', label: 'Completed' } : a.status === 'in_progress' ? { bg: '#FFFBEB', border: '#FDE68A', c: '#D97706', label: 'In Progress' } : { bg: '#F8FAFC', border: '#F1F5F9', c: '#64748B', label: 'Assigned' }
+                        return (
+                          <div key={a.id} style={{ border: `1px solid ${sc.border}`, background: sc.bg, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                            <div style={{ width: 32, height: 32, background: '#F5F3FF', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <FolderTree size={15} color="#7C3AED" />
                             </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                <span style={{ fontSize: 14, fontWeight: 700, color: '#0F172A' }}>{a.learning_path?.name}</span>
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: 'white', color: sc.c }}>{sc.label}</span>
+                              </div>
+                              {a.due_date && <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>Due: {new Date(a.due_date).toLocaleDateString()}</p>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ADMIN/MANAGER: org settings */}
+            {(profile?.role === 'admin' || profile?.role === 'manager') && (
+              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', ...anim(80) }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #F8FAFC' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Building2 size={17} color="#64748B" />
+                    <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>Organization Settings</span>
+                  </div>
+                  {!showOrgForm && agencySettings && (
+                    <button onClick={() => setShowOrgForm(true)} style={{ padding: '6px 14px', background: '#EFF6FF', color: '#2563EB', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
+                  )}
+                </div>
+                <div style={{ padding: 20 }}>
+                  {agencySettings && !showOrgForm ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      {[
+                        { icon: <MapPin size={14} />, label: 'Address', value: agencySettings.address },
+                        { icon: <Phone size={14} />, label: 'Phone', value: agencySettings.phone },
+                        { icon: <Globe size={14} />, label: 'Website', value: agencySettings.website },
+                        { icon: <Mail size={14} />, label: 'Contact', value: agencySettings.contact_name },
+                        { icon: <Mail size={14} />, label: 'Contact Email', value: agencySettings.contact_email },
+                      ].map(({ icon, label, value }) => (
+                        <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+                          <div style={{ width: 26, height: 26, background: '#F8FAFC', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94A3B8' }}>{icon}</div>
+                          <div>
+                            <p style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
+                            <p style={{ fontSize: 13, fontWeight: 600, color: value ? '#0F172A' : '#CBD5E1', margin: 0 }}>{value || 'Not set'}</p>
                           </div>
                         </div>
                       ))}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {(profile?.role === 'admin' || profile?.role === 'manager') && (
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Organization Settings</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {agencySettings && !showOrgSettingsForm ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-start gap-3">
-                          <MapPin className="text-gray-400 mt-1 flex-shrink-0" size={20} />
-                          <div>
-                            <p className="text-sm text-gray-600">Address</p>
-                            <p className="font-medium text-gray-900">{agencySettings.address || 'Not set'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <Phone className="text-gray-400 mt-1 flex-shrink-0" size={20} />
-                          <div>
-                            <p className="text-sm text-gray-600">Phone</p>
-                            <p className="font-medium text-gray-900">{agencySettings.phone || 'Not set'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <Globe className="text-gray-400 mt-1 flex-shrink-0" size={20} />
-                          <div>
-                            <p className="text-sm text-gray-600">Website</p>
-                            <p className="font-medium text-gray-900">{agencySettings.website || 'Not set'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <UserCircle className="text-gray-400 mt-1 flex-shrink-0" size={20} />
-                          <div>
-                            <p className="text-sm text-gray-600">Main Contact</p>
-                            <p className="font-medium text-gray-900">{agencySettings.contact_name || 'Not set'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <Mail className="text-gray-400 mt-1 flex-shrink-0" size={20} />
-                          <div>
-                            <p className="text-sm text-gray-600">Contact Email</p>
-                            <p className="font-medium text-gray-900">{agencySettings.contact_email || 'Not set'}</p>
-                          </div>
-                        </div>
+                  ) : showOrgForm ? (
+                    <form onSubmit={handleOrgUpdate}>
+                      <div style={{ marginBottom: 16 }}><label style={labelS}>Address</label><input type="text" value={orgData.address} onChange={e => setOrgData({ ...orgData, address: e.target.value })} style={inputS} /></div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                        <div><label style={labelS}>Phone</label><input type="tel" value={orgData.phone} onChange={e => setOrgData({ ...orgData, phone: e.target.value })} style={inputS} /></div>
+                        <div><label style={labelS}>Website</label><input type="url" value={orgData.website} onChange={e => setOrgData({ ...orgData, website: e.target.value })} style={inputS} /></div>
                       </div>
-                      <div className="pt-4 border-t border-gray-200">
-                        <button
-                          onClick={() => setShowOrgSettingsForm(true)}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Edit Organization Settings
-                        </button>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                        <div><label style={labelS}>Contact Name</label><input type="text" value={orgData.contact_name} onChange={e => setOrgData({ ...orgData, contact_name: e.target.value })} style={inputS} /></div>
+                        <div><label style={labelS}>Contact Email</label><input type="email" value={orgData.contact_email} onChange={e => setOrgData({ ...orgData, contact_email: e.target.value })} style={inputS} /></div>
                       </div>
-                    </div>
-                  ) : showOrgSettingsForm ? (
-                    <form onSubmit={handleOrgSettingsUpdate} className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Address
-                        </label>
-                        <input
-                          type="text"
-                          value={orgSettingsData.address}
-                          onChange={(e) => setOrgSettingsData({ ...orgSettingsData, address: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="Organization address"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Phone
-                          </label>
-                          <input
-                            type="tel"
-                            value={orgSettingsData.phone}
-                            onChange={(e) => setOrgSettingsData({ ...orgSettingsData, phone: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="(555) 123-4567"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Website
-                          </label>
-                          <input
-                            type="url"
-                            value={orgSettingsData.website}
-                            onChange={(e) => setOrgSettingsData({ ...orgSettingsData, website: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="https://example.com"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Main Contact Name
-                          </label>
-                          <input
-                            type="text"
-                            value={orgSettingsData.contact_name}
-                            onChange={(e) => setOrgSettingsData({ ...orgSettingsData, contact_name: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="John Doe"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Contact Email
-                          </label>
-                          <input
-                            type="email"
-                            value={orgSettingsData.contact_email}
-                            onChange={(e) => setOrgSettingsData({ ...orgSettingsData, contact_email: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="contact@example.com"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-3 pt-2">
-                        <button
-                          type="submit"
-                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Save Settings
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowOrgSettingsForm(false)}
-                          className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          Cancel
-                        </button>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Save</button>
+                        <button type="button" onClick={() => setShowOrgForm(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                       </div>
                     </form>
                   ) : (
-                    <p className="text-gray-500">No organization settings found</p>
+                    <p style={{ fontSize: 14, color: '#94A3B8', textAlign: 'center', padding: '24px 0' }}>No organization settings found</p>
                   )}
-                </CardContent>
-              </Card>
+                </div>
+              </div>
+            )}
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Admin Information</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-600">
-                    You have administrative access to manage caregivers, courses, learning paths, and view compliance reports.
-                  </p>
-                  <div className="mt-6 space-y-3">
-                    <a
-                      href="/caregivers"
-                      className="block p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                    >
-                      <h3 className="font-semibold text-blue-900">Manage Caregivers</h3>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Add, edit, and assign training to caregivers
-                      </p>
+            {/* ADMIN/MANAGER: quick links */}
+            {(profile?.role === 'admin' || profile?.role === 'manager') && (
+              <div style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', padding: 20, ...anim(160) }}>
+                <h3 style={{ fontSize: 13, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 16px' }}>Quick Access</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {[
+                    { href: '/caregivers', bg: '#EFF6FF', c: '#1D4ED8', title: 'Manage Caregivers', sub: 'Add, edit, and assign training to caregivers' },
+                    { href: '/courses', bg: '#F0FDF4', c: '#15803D', title: 'Manage Courses', sub: 'Create and manage your course catalog' },
+                    { href: '/learning-paths', bg: '#F5F3FF', c: '#6D28D9', title: 'Learning Paths', sub: 'Group courses into structured learning paths' },
+                    { href: '/compliance', bg: '#FFFBEB', c: '#B45309', title: 'Compliance Dashboard', sub: 'Track and manage compliance across your team' },
+                  ].map(link => (
+                    <a key={link.href} href={link.href} style={{ display: 'block', padding: '14px 16px', background: link.bg, borderRadius: 12, textDecoration: 'none', transition: 'opacity 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '1'}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: link.c, margin: '0 0 2px' }}>{link.title}</p>
+                      <p style={{ fontSize: 12, color: link.c, margin: 0, opacity: 0.7 }}>{link.sub}</p>
                     </a>
-                    <a
-                      href="/courses"
-                      className="block p-4 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors"
-                    >
-                      <h3 className="font-semibold text-teal-900">Manage Courses</h3>
-                      <p className="text-sm text-teal-700 mt-1">
-                        Create and manage your course catalog
-                      </p>
-                    </a>
-                    <a
-                      href="/learning-paths"
-                      className="block p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-                    >
-                      <h3 className="font-semibold text-purple-900">Learning Paths</h3>
-                      <p className="text-sm text-purple-700 mt-1">
-                        Group courses into structured learning paths
-                      </p>
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {completingAssignment && profile?.id && (
-        <CourseCompletionModal
-          assignment={completingAssignment}
-          caregiverId={profile.id}
-          onClose={() => setCompletingAssignment(null)}
-          onCompleted={() => {
-            setCompletingAssignment(null)
-            loadProfileData()
-          }}
-        />
+        <CourseCompletionModal assignment={completingAssignment} caregiverId={profile.id} onClose={() => setCompletingAssignment(null)} onCompleted={() => { setCompletingAssignment(null); loadData() }} />
       )}
-
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </MainLayout>
   )

@@ -3,7 +3,9 @@ import { useSearchParams, Link } from 'react-router-dom'
 import { MainLayout } from '../components/MainLayout'
 import { courseService } from '../services/courses'
 import type { Course, CourseAssignment } from '../types'
-import { Plus, CreditCard as Edit2, Trash2, CircleAlert as AlertCircle, Clock, ExternalLink, ArrowLeft } from 'lucide-react'
+import { Plus, Edit2, Trash2, AlertCircle, Clock, ExternalLink, ArrowLeft, BookOpen, Search } from 'lucide-react'
+
+const S: React.CSSProperties = { animation:'fadeSlideUp 0.45s ease both' }
 
 export function Courses() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -11,486 +13,214 @@ export function Courses() {
   const [assignments, setAssignments] = useState<CourseAssignment[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [filterView, setFilterView] = useState<'all' | 'due_soon' | 'overdue'>('all')
-  const [formData, setFormData] = useState<Partial<Course>>({
-    title: '',
-    description: '',
-    category: '',
-    estimated_duration_minutes: 60,
-    delivery_format: 'external_link',
-    source_provider: '',
-    external_url: '',
-    compliance_tag: '',
-    regulation_reference: '',
-    is_required: false,
-    ce_hours: 0,
-    is_active: true
-  })
+  const [editingId, setEditingId] = useState<string|null>(null)
+  const [filterView, setFilterView] = useState<'all'|'due_soon'|'overdue'>('all')
+  const [search, setSearch] = useState('')
+  const blank: Partial<Course> = { title:'', description:'', category:'', estimated_duration_minutes:60, delivery_format:'external_link', source_provider:'', external_url:'', compliance_tag:'', regulation_reference:'', is_required:false, ce_hours:0, is_active:true }
+  const [formData, setFormData] = useState<Partial<Course>>(blank)
 
   useEffect(() => {
-    loadCourses()
-    loadAssignments()
-
-    const filter = searchParams.get('filter')
-    if (filter === 'due_soon' || filter === 'overdue') {
-      setFilterView(filter)
-    }
+    loadCourses(); loadAssignments()
+    const f = searchParams.get('filter')
+    if (f === 'due_soon' || f === 'overdue') setFilterView(f)
   }, [searchParams])
 
-  const loadCourses = async () => {
-    try {
-      const data = await courseService.getCourses()
-      setCourses(data)
-    } catch (error) {
-      console.error('Error loading courses:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadAssignments = async () => {
-    try {
-      const data = await courseService.getAllAssignments()
-      setAssignments(data)
-    } catch (error) {
-      console.error('Error loading assignments:', error)
-    }
-  }
+  const loadCourses = async () => { try { setCourses(await courseService.getCourses()) } catch(e){ console.error(e) } finally { setLoading(false) } }
+  const loadAssignments = async () => { try { setAssignments(await courseService.getAllAssignments()) } catch(e){ console.error(e) } }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      if (editingId) {
-        const updated = await courseService.updateCourse(editingId, formData)
-        setCourses(courses.map(c => c.id === editingId ? updated : c))
-        setEditingId(null)
-      } else {
-        const created = await courseService.createCourse(formData as Omit<Course, 'id' | 'created_at' | 'updated_at'>)
-        setCourses([...courses, created])
-      }
-      setFormData({
-        title: '',
-        description: '',
-        category: '',
-        estimated_duration_minutes: 60,
-        delivery_format: 'external_link',
-        source_provider: '',
-        external_url: '',
-        compliance_tag: '',
-        regulation_reference: '',
-        is_required: false,
-        ce_hours: 0,
-        is_active: true
-      })
-      setShowForm(false)
-    } catch (error) {
-      console.error('Error saving course:', error)
-    }
+      if (editingId) { const u = await courseService.updateCourse(editingId, formData); setCourses(courses.map(c=>c.id===editingId?u:c)); setEditingId(null) }
+      else { const c = await courseService.createCourse(formData as any); setCourses([...courses,c]) }
+      setFormData(blank); setShowForm(false)
+    } catch(e){ console.error(e) }
   }
+  const handleDelete = async (id: string) => { if(!confirm('Deactivate this course?')) return; try { await courseService.deleteCourse(id); setCourses(courses.filter(c=>c.id!==id)) } catch(e){console.error(e)} }
+  const handleEdit = (c: Course) => { setFormData(c); setEditingId(c.id); setShowForm(true) }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to deactivate this course?')) return
+  const now = new Date()
+  const soon = new Date(now.getTime()+30*24*60*60*1000)
+  const getDueSoon = () => assignments.filter(a=>{ const d=new Date(a.due_date); return d>=now&&d<=soon })
+  const getOverdue = () => assignments.filter(a=>new Date(a.due_date)<now)
+  const displayAssignments = filterView==='due_soon'?getDueSoon():filterView==='overdue'?getOverdue():[]
+  const filteredCourses = courses.filter(c => !search || c.title.toLowerCase().includes(search.toLowerCase()) || c.category.toLowerCase().includes(search.toLowerCase()))
 
-    try {
-      await courseService.deleteCourse(id)
-      setCourses(courses.filter(c => c.id !== id))
-    } catch (error) {
-      console.error('Error deleting course:', error)
-    }
-  }
-
-  const handleEdit = (course: Course) => {
-    setFormData(course)
-    setEditingId(course.id)
-    setShowForm(true)
-  }
-
-  const getDueSoonAssignments = () => {
-    const now = new Date()
-    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-    return assignments.filter(a => {
-      const dueDate = new Date(a.due_date)
-      return dueDate >= now && dueDate <= thirtyDaysFromNow
-    })
-  }
-
-  const getOverdueAssignments = () => {
-    const now = new Date()
-    return assignments.filter(a => {
-      const dueDate = new Date(a.due_date)
-      return dueDate < now
-    })
-  }
-
-  const displayAssignments = filterView === 'due_soon'
-    ? getDueSoonAssignments()
-    : filterView === 'overdue'
-    ? getOverdueAssignments()
-    : []
+  const inputS: React.CSSProperties = { width:'100%', padding:'9px 12px', border:'1px solid #E2E8F0', borderRadius:10, fontSize:14, outline:'none' }
+  const labelS: React.CSSProperties = { display:'block', fontSize:13, fontWeight:600, color:'#475569', marginBottom:6 }
 
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <div style={{ maxWidth:1200, margin:'0 auto', padding:32 }}>
+
+        {/* Filter views */}
         {filterView !== 'all' && (
-          <div className="mb-6">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium mb-4"
-            >
-              <ArrowLeft size={20} />
-              Back to Dashboard
+          <div style={S}>
+            <Link to="/dashboard" style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#2563EB', fontWeight:600, fontSize:14, textDecoration:'none', marginBottom:16 }}>
+              <ArrowLeft size={16}/> Back to Dashboard
             </Link>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {filterView === 'due_soon' && (
-                  <>
-                    <div className="p-3 bg-yellow-100 rounded-lg">
-                      <Clock className="h-6 w-6 text-yellow-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900">Due Soon</h2>
-                      <p className="text-gray-600">Assignments due within the next 30 days</p>
-                    </div>
-                  </>
-                )}
-                {filterView === 'overdue' && (
-                  <>
-                    <div className="p-3 bg-red-100 rounded-lg">
-                      <AlertCircle className="h-6 w-6 text-red-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900">Overdue Assignments</h2>
-                      <p className="text-gray-600">Assignments past their due date</p>
-                    </div>
-                  </>
-                )}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ width:44, height:44, borderRadius:12, background: filterView==='overdue'?'#FEF2F2':'#FFFBEB', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  {filterView==='overdue' ? <AlertCircle size={22} color="#DC2626"/> : <Clock size={22} color="#D97706"/>}
+                </div>
+                <div>
+                  <h1 style={{ fontSize:22, fontWeight:800, color:'#0F172A', margin:0 }}>{filterView==='overdue'?'Overdue Assignments':'Due Soon'}</h1>
+                  <p style={{ fontSize:14, color:'#64748B', margin:0 }}>{filterView==='due_soon'?'Due within 30 days':'Past their due date'}</p>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  setFilterView('all')
-                  setSearchParams({})
-                }}
-                className="text-blue-600 hover:text-blue-700 font-medium"
-              >
+              <button onClick={()=>{setFilterView('all');setSearchParams({})}} style={{ padding:'8px 16px', background:'#EFF6FF', color:'#2563EB', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>
                 View All Courses
               </button>
             </div>
-
-            <div className="mt-6 space-y-3">
-              {displayAssignments.length === 0 ? (
-                <div className="text-center py-12 bg-gray-50 rounded-lg">
-                  <p className="text-gray-500">
-                    {filterView === 'due_soon'
-                      ? 'No assignments due soon'
-                      : 'No overdue assignments'}
-                  </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {displayAssignments.length===0 ? (
+                <div style={{ textAlign:'center', padding:'48px 0', background:'white', borderRadius:14, border:'1px solid #F1F5F9' }}>
+                  <p style={{ color:'#94A3B8', fontSize:14 }}>{filterView==='due_soon'?'No assignments due soon':'No overdue assignments'}</p>
                 </div>
-              ) : (
-                displayAssignments.map((assignment) => (
-                  <div
-                    key={assignment.id}
-                    className={`p-4 rounded-lg border-2 ${
-                      filterView === 'overdue'
-                        ? 'border-red-200 bg-red-50'
-                        : 'border-yellow-200 bg-yellow-50'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {assignment.course?.title}
-                          </h3>
-                          {filterView === 'overdue' ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 text-xs font-medium rounded">
-                              <AlertCircle size={14} />
-                              Overdue
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-medium rounded">
-                              <Clock size={14} />
-                              Due Soon
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 mt-1">
-                          Caregiver: {assignment.caregiver?.first_name} {assignment.caregiver?.last_name}
-                        </p>
-                        <p className={`text-sm font-medium mt-1 ${
-                          filterView === 'overdue' ? 'text-red-700' : 'text-yellow-700'
-                        }`}>
-                          Due: {new Date(assignment.due_date).toLocaleDateString()}
-                        </p>
-                      </div>
+              ) : displayAssignments.map(a => (
+                <div key={a.id} style={{ background:'white', borderRadius:14, border:`1px solid ${filterView==='overdue'?'#FECACA':'#FDE68A'}`, padding:'16px 20px', display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+                  <div>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                      <span style={{ fontSize:15, fontWeight:700, color:'#0F172A' }}>{a.course?.title}</span>
+                      <span style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background: filterView==='overdue'?'#FEF2F2':'#FFFBEB', color: filterView==='overdue'?'#B91C1C':'#B45309' }}>
+                        {filterView==='overdue'?<AlertCircle size={11}/>:<Clock size={11}/>}
+                        {filterView==='overdue'?'Overdue':'Due Soon'}
+                      </span>
                     </div>
+                    <p style={{ fontSize:13, color:'#64748B', margin:'0 0 4px' }}>Caregiver: {a.caregiver?.first_name} {a.caregiver?.last_name}</p>
+                    <p style={{ fontSize:13, fontWeight:600, color: filterView==='overdue'?'#B91C1C':'#B45309', margin:0 }}>Due: {new Date(a.due_date).toLocaleDateString()}</p>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {filterView === 'all' && (
-          <>
-            <div className="flex items-center justify-between mb-8">
-              <h1 className="text-4xl font-bold text-gray-900">Course Catalog</h1>
-              <button
-            onClick={() => {
-              setEditingId(null)
-              setFormData({
-                title: '',
-                description: '',
-                category: '',
-                estimated_duration_minutes: 60,
-                delivery_format: 'external_link',
-                source_provider: '',
-                external_url: '',
-                compliance_tag: '',
-                regulation_reference: '',
-                is_required: false,
-                ce_hours: 0,
-                is_active: true
-              })
-              setShowForm(true)
-            }}
-            className="btn-primary flex items-center space-x-2"
-          >
-            <Plus size={20} />
-            <span>Add Course</span>
-          </button>
-        </div>
-
-        {showForm && (
-          <div className="card p-6 mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">{editingId ? 'Edit Course' : 'Add New Course'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Course Title *</label>
-                  <input
-                    type="text"
-                    value={formData.title || ''}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="input-field"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-                  <input
-                    type="text"
-                    value={formData.category || ''}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g., Infection Control, Safety Training"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={formData.description || ''}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="input-field"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Format *</label>
-                  <select
-                    value={formData.delivery_format || 'external_link'}
-                    onChange={(e) => setFormData({ ...formData, delivery_format: e.target.value as any })}
-                    className="input-field"
-                  >
-                    <option value="external_link">External Link</option>
-                    <option value="embedded_video">Embedded Video</option>
-                    <option value="pdf">PDF</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Duration (minutes)</label>
-                  <input
-                    type="number"
-                    value={formData.estimated_duration_minutes || 60}
-                    onChange={(e) => setFormData({ ...formData, estimated_duration_minutes: parseInt(e.target.value) })}
-                    className="input-field"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Source/Provider</label>
-                  <input
-                    type="text"
-                    value={formData.source_provider || ''}
-                    onChange={(e) => setFormData({ ...formData, source_provider: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g., Texas HHS, Alison"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">CE Hours</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={formData.ce_hours || 0}
-                    onChange={(e) => setFormData({ ...formData, ce_hours: parseFloat(e.target.value) })}
-                    className="input-field"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">External URL</label>
-                <input
-                  type="url"
-                  value={formData.external_url || ''}
-                  onChange={(e) => setFormData({ ...formData, external_url: e.target.value })}
-                  className="input-field"
-                  placeholder="https://example.com/course"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Compliance Tag</label>
-                  <input
-                    type="text"
-                    value={formData.compliance_tag || ''}
-                    onChange={(e) => setFormData({ ...formData, compliance_tag: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g., 26 TAC §558"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Regulation Reference</label>
-                  <input
-                    type="text"
-                    value={formData.regulation_reference || ''}
-                    onChange={(e) => setFormData({ ...formData, regulation_reference: e.target.value })}
-                    className="input-field"
-                    placeholder="e.g., HIPAA, ANE Reporting"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-6">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.is_required || false}
-                    onChange={(e) => setFormData({ ...formData, is_required: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Required by HCSSA</span>
-                </label>
-
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.is_active !== false}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Active</span>
-                </label>
-              </div>
-
-              <div className="flex space-x-3 pt-4">
-                <button type="submit" className="btn-primary">
-                  {editingId ? 'Update Course' : 'Add Course'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+        {/* All courses view */}
+        {filterView === 'all' && (<>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:28, ...S }}>
+            <div>
+              <h1 style={{ fontSize:26, fontWeight:800, color:'#0F172A', margin:'0 0 4px' }}>Course Catalog</h1>
+              <p style={{ fontSize:14, color:'#64748B', margin:0 }}>Manage and organize your training courses</p>
+            </div>
+            <button onClick={()=>{setEditingId(null);setFormData(blank);setShowForm(true)}} style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'10px 18px', background:'#2563EB', color:'white', border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>
+              <Plus size={18}/> Add Course
+            </button>
           </div>
-        )}
 
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-            <p className="mt-4 text-gray-600">Loading courses...</p>
+          {/* Search */}
+          <div style={{ position:'relative', marginBottom:20, ...S, animationDelay:'60ms' }}>
+            <Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'#94A3B8', pointerEvents:'none' }}/>
+            <input type="text" placeholder="Search courses…" value={search} onChange={e=>setSearch(e.target.value)}
+              style={{ ...inputS, paddingLeft:38 }}/>
           </div>
-        ) : (
-          <div className="grid gap-4">
-            {courses.map((course) => (
-              <div key={course.id} className="card p-6 hover:shadow-lg transition">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">{course.title}</h3>
-                    <p className="text-gray-600 mb-2">{course.description}</p>
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">{course.category}</span>
-                      {course.compliance_tag && (
-                        <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-sm">{course.compliance_tag}</span>
-                      )}
-                      {course.is_required && (
-                        <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-sm font-medium">Required</span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-500">
-                      {course.estimated_duration_minutes} mins • {course.source_provider}
-                      {course.ce_hours ? ` • ${course.ce_hours} CE hours` : ''}
-                    </p>
+
+          {/* Add/Edit form */}
+          {showForm && (
+            <div style={{ background:'white', borderRadius:16, border:'1px solid #F1F5F9', padding:24, marginBottom:24, boxShadow:'0 4px 16px rgba(0,0,0,0.06)', ...S }}>
+              <h2 style={{ fontSize:18, fontWeight:800, color:'#0F172A', margin:'0 0 20px' }}>{editingId?'Edit Course':'Add New Course'}</h2>
+              <form onSubmit={handleSubmit}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+                  <div><label style={labelS}>Course Title *</label><input type="text" value={formData.title||''} onChange={e=>setFormData({...formData,title:e.target.value})} style={inputS} required/></div>
+                  <div><label style={labelS}>Category *</label><input type="text" value={formData.category||''} onChange={e=>setFormData({...formData,category:e.target.value})} style={inputS} placeholder="e.g. Safety Training" required/></div>
+                </div>
+                <div style={{ marginBottom:16 }}><label style={labelS}>Description</label><textarea value={formData.description||''} onChange={e=>setFormData({...formData,description:e.target.value})} style={{...inputS,resize:'vertical'}} rows={3}/></div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+                  <div><label style={labelS}>Delivery Format</label>
+                    <select value={formData.delivery_format||'external_link'} onChange={e=>setFormData({...formData,delivery_format:e.target.value as any})} style={inputS}>
+                      <option value="external_link">External Link</option>
+                      <option value="embedded_video">Embedded Video</option>
+                      <option value="pdf">PDF</option>
+                    </select>
                   </div>
-                  <div className="flex space-x-2">
-                    {course.external_url && (
-                      <button
-                        onClick={() => window.open(course.external_url, '_blank')}
-                        className="btn-outline p-2 flex items-center gap-2"
-                        title="View course"
-                      >
-                        <ExternalLink size={20} />
-                        <span className="hidden sm:inline">View</span>
+                  <div><label style={labelS}>Duration (min)</label><input type="number" value={formData.estimated_duration_minutes||60} onChange={e=>setFormData({...formData,estimated_duration_minutes:parseInt(e.target.value)})} style={inputS}/></div>
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+                  <div><label style={labelS}>Source / Provider</label><input type="text" value={formData.source_provider||''} onChange={e=>setFormData({...formData,source_provider:e.target.value})} style={inputS} placeholder="e.g. Texas HHS"/></div>
+                  <div><label style={labelS}>CE Hours</label><input type="number" step="0.5" value={formData.ce_hours||0} onChange={e=>setFormData({...formData,ce_hours:parseFloat(e.target.value)})} style={inputS}/></div>
+                </div>
+                <div style={{ marginBottom:16 }}><label style={labelS}>External URL</label><input type="url" value={formData.external_url||''} onChange={e=>setFormData({...formData,external_url:e.target.value})} style={inputS} placeholder="https://"/></div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+                  <div><label style={labelS}>Compliance Tag</label><input type="text" value={formData.compliance_tag||''} onChange={e=>setFormData({...formData,compliance_tag:e.target.value})} style={inputS} placeholder="e.g. 26 TAC §558"/></div>
+                  <div><label style={labelS}>Regulation Ref</label><input type="text" value={formData.regulation_reference||''} onChange={e=>setFormData({...formData,regulation_reference:e.target.value})} style={inputS}/></div>
+                </div>
+                <div style={{ display:'flex', gap:20, marginBottom:20 }}>
+                  {[{key:'is_required',label:'Required by HCSSA'},{key:'is_active',label:'Active'}].map(({key,label})=>(
+                    <label key={key} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', fontSize:14, color:'#475569', fontWeight:500 }}>
+                      <input type="checkbox" checked={(formData as any)[key]??false} onChange={e=>setFormData({...formData,[key]:e.target.checked})} style={{ width:16, height:16 }}/>{label}
+                    </label>
+                  ))}
+                </div>
+                <div style={{ display:'flex', gap:10 }}>
+                  <button type="submit" style={{ padding:'9px 20px', background:'#2563EB', color:'white', border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>{editingId?'Update':'Add Course'}</button>
+                  <button type="button" onClick={()=>setShowForm(false)} style={{ padding:'9px 20px', background:'#F1F5F9', color:'#475569', border:'none', borderRadius:10, fontSize:14, fontWeight:600, cursor:'pointer' }}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {loading ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              {[1,2,3].map(i=><div key={i} style={{ height:90, borderRadius:14, background:'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize:'200% 100%', animation:`shimmer 1.5s ease ${i*0.1}s infinite` }}/>)}
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {filteredCourses.map((c,i) => (
+                <div key={c.id} style={{ background:'white', borderRadius:14, border:'1px solid #F1F5F9', padding:'18px 20px', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, boxShadow:'0 1px 3px rgba(0,0,0,0.04)', transition:'box-shadow 0.2s', animation:'fadeSlideUp 0.4s ease both', animationDelay:`${i*40}ms` }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.boxShadow='0 4px 16px rgba(0,0,0,0.08)'}
+                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.boxShadow='0 1px 3px rgba(0,0,0,0.04)'}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                      <div style={{ width:36, height:36, background:'#EFF6FF', borderRadius:9, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        <BookOpen size={17} color="#2563EB"/>
+                      </div>
+                      <h3 style={{ fontSize:15, fontWeight:700, color:'#0F172A', margin:0 }}>{c.title}</h3>
+                    </div>
+                    {c.description && <p style={{ fontSize:13, color:'#64748B', margin:'0 0 8px 46px' }}>{c.description}</p>}
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginLeft:46 }}>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'#EFF6FF', color:'#2563EB' }}>{c.category}</span>
+                      {c.compliance_tag && <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'#F0FDF4', color:'#16A34A' }}>{c.compliance_tag}</span>}
+                      {c.is_required && <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:'#FEF2F2', color:'#DC2626' }}>Required</span>}
+                      <span style={{ fontSize:11, color:'#94A3B8', display:'flex', alignItems:'center', gap:4 }}>
+                        <Clock size={11}/> {c.estimated_duration_minutes}m
+                        {c.source_provider && ` · ${c.source_provider}`}
+                        {c.ce_hours ? ` · ${c.ce_hours} CE hrs` : ''}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    {c.external_url && (
+                      <button onClick={()=>window.open(c.external_url,'_blank')} title="View" style={{ width:36, height:36, background:'#F1F5F9', border:'none', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'background 0.15s' }}
+                        onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#E2E8F0'}
+                        onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='#F1F5F9'}>
+                        <ExternalLink size={15} color="#475569"/>
                       </button>
                     )}
-                    <button
-                      onClick={() => handleEdit(course)}
-                      className="btn-outline p-2"
-                      title="Edit course"
-                    >
-                      <Edit2 size={20} />
+                    <button onClick={()=>handleEdit(c)} title="Edit" style={{ width:36, height:36, background:'#EFF6FF', border:'none', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'background 0.15s' }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#DBEAFE'}
+                      onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='#EFF6FF'}>
+                      <Edit2 size={15} color="#2563EB"/>
                     </button>
-                    <button
-                      onClick={() => handleDelete(course.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition"
-                      title="Delete course"
-                    >
-                      <Trash2 size={20} />
+                    <button onClick={()=>handleDelete(c.id)} title="Delete" style={{ width:36, height:36, background:'#FEF2F2', border:'none', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'background 0.15s' }}
+                      onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='#FEE2E2'}
+                      onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='#FEF2F2'}>
+                      <Trash2 size={15} color="#DC2626"/>
                     </button>
                   </div>
                 </div>
-              </div>
-            ))}
-
-            {courses.length === 0 && !showForm && (
-              <div className="text-center py-12">
-                <p className="text-gray-600 mb-4">No courses yet. Create your first course to get started.</p>
-                <button onClick={() => setShowForm(true)} className="btn-primary">
-                  Create First Course
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        </>
-        )}
+              ))}
+              {filteredCourses.length===0 && !showForm && (
+                <div style={{ textAlign:'center', padding:'56px 0', background:'white', borderRadius:14, border:'1px solid #F1F5F9' }}>
+                  <BookOpen size={40} color="#CBD5E1" style={{ marginBottom:12 }}/>
+                  <p style={{ fontSize:15, color:'#64748B', marginBottom:16 }}>No courses yet. Add your first course to get started.</p>
+                  <button onClick={()=>setShowForm(true)} style={{ padding:'9px 20px', background:'#2563EB', color:'white', border:'none', borderRadius:10, fontSize:14, fontWeight:700, cursor:'pointer' }}>Create First Course</button>
+                </div>
+              )}
+            </div>
+          )}
+        </>)}
       </div>
     </MainLayout>
   )

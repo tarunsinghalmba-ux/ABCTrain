@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react'
 import { MainLayout } from '../components/MainLayout'
-import { Card, CardContent, CardHeader, CardTitle } from '../components/Card'
 import { ToastContainer } from '../components/ToastContainer'
 import { learningPathService } from '../services/learningPaths'
 import { courseService } from '../services/courses'
 import { profileService } from '../services/profiles'
 import { useAuth } from '../contexts/AuthContext'
 import type { LearningPathWithCourses, Course, Profile } from '../types'
-import { Plus, CreditCard as Edit, Trash2, BookOpen, Users, GripVertical, X } from 'lucide-react'
+import { Plus, Edit, Trash2, BookOpen, Users, GripVertical, X, FolderOpen } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
+const anim = (delay = 0): React.CSSProperties => ({ animation: 'fadeSlideUp 0.45s ease both', animationDelay: `${delay}ms` })
+const inputS: React.CSSProperties = { width: '100%', padding: '9px 12px', border: '1px solid #E2E8F0', borderRadius: 10, fontSize: 14, color: '#0F172A', outline: 'none', boxSizing: 'border-box' }
+const labelS: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#475569', marginBottom: 6 }
 
 export function LearningPaths() {
   const { user, profile } = useAuth()
@@ -23,465 +25,217 @@ export function LearningPaths() {
   const [selectedPath, setSelectedPath] = useState<LearningPathWithCourses | null>(null)
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: ToastType }>>([])
   const [toastId, setToastId] = useState(0)
-
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    is_active: true,
-    selectedCourses: [] as string[]
-  })
-
-  const [assignmentData, setAssignmentData] = useState({
-    caregiverId: '',
-    dueDate: ''
-  })
+  const [formData, setFormData] = useState({ name: '', description: '', is_active: true, selectedCourses: [] as string[] })
+  const [assignmentData, setAssignmentData] = useState({ caregiverId: '', dueDate: '' })
 
   const showToast = (message: string, type: ToastType = 'info') => {
-    const id = toastId
-    setToastId(prev => prev + 1)
-    setToasts(prev => [...prev, { id, message, type }])
+    const id = toastId; setToastId(p => p + 1)
+    setToasts(p => [...p, { id, message, type }])
   }
+  const removeToast = (id: number) => setToasts(p => p.filter(t => t.id !== id))
 
-  const removeToast = (id: number) => {
-    setToasts(prev => prev.filter(toast => toast.id !== id))
-  }
+  useEffect(() => { load() }, [])
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const load = async () => {
     try {
       setLoading(true)
-      const [pathsData, coursesData, caregiversData] = await Promise.all([
-        learningPathService.getAll(),
-        courseService.getCourses(),
-        profileService.getCaregivers()
-      ])
-      setPaths(pathsData)
-      setCourses(coursesData)
-      setCaregivers(caregiversData)
-    } catch (err) {
-      console.error('Error loading data:', err)
-    } finally {
-      setLoading(false)
-    }
+      const [p, c, cg] = await Promise.all([learningPathService.getAll(), courseService.getCourses(), profileService.getCaregivers()])
+      setPaths(p); setCourses(c); setCaregivers(cg)
+    } catch (e) { console.error(e) } finally { setLoading(false) }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!user) return
-
+    e.preventDefault(); if (!user) return
     try {
       if (editingPath) {
-        await learningPathService.update(editingPath.id, {
-          name: formData.name,
-          description: formData.description,
-          is_active: formData.is_active
-        })
-
-        const existingCourseIds = editingPath.courses.map(c => c.course_id)
-        const coursesToAdd = formData.selectedCourses.filter(id => !existingCourseIds.includes(id))
-        const coursesToRemove = existingCourseIds.filter(id => !formData.selectedCourses.includes(id))
-
-        for (const courseId of coursesToRemove) {
-          await learningPathService.removeCourse(editingPath.id, courseId)
-        }
-
-        for (let i = 0; i < coursesToAdd.length; i++) {
-          await learningPathService.addCourse(
-            editingPath.id,
-            coursesToAdd[i],
-            existingCourseIds.length + i
-          )
-        }
+        await learningPathService.update(editingPath.id, { name: formData.name, description: formData.description, is_active: formData.is_active })
+        const existing = editingPath.courses.map(c => c.course_id)
+        for (const id of existing.filter(id => !formData.selectedCourses.includes(id))) await learningPathService.removeCourse(editingPath.id, id)
+        for (let i = 0; i < formData.selectedCourses.filter(id => !existing.includes(id)).length; i++) await learningPathService.addCourse(editingPath.id, formData.selectedCourses.filter(id => !existing.includes(id))[i], existing.length + i)
       } else {
-        const newPath = await learningPathService.create({
-          organization: profile?.organization || '',
-          name: formData.name,
-          description: formData.description,
-          is_active: formData.is_active,
-          created_by: user.id
-        })
-
-        for (let i = 0; i < formData.selectedCourses.length; i++) {
-          await learningPathService.addCourse(newPath.id, formData.selectedCourses[i], i)
-        }
+        const np = await learningPathService.create({ organization: profile?.organization || '', name: formData.name, description: formData.description, is_active: formData.is_active, created_by: user.id })
+        for (let i = 0; i < formData.selectedCourses.length; i++) await learningPathService.addCourse(np.id, formData.selectedCourses[i], i)
       }
-
-      await loadData()
-      resetForm()
-    } catch (err) {
-      console.error('Error saving learning path:', err)
-    }
+      await load(); resetForm()
+    } catch (e) { console.error(e) }
   }
 
   const handleAssign = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!selectedPath || !user || !assignmentData.caregiverId) return
-
+    e.preventDefault(); if (!selectedPath || !user || !assignmentData.caregiverId) return
     try {
-      await learningPathService.assignToCaregiver(
-        selectedPath.id,
-        assignmentData.caregiverId,
-        user.id,
-        assignmentData.dueDate || undefined
-      )
-
-      const caregiver = caregivers.find(c => c.id === assignmentData.caregiverId)
-      const caregiverName = caregiver ? `${caregiver.first_name} ${caregiver.last_name}` : 'caregiver'
-
-      showToast(
-        `Learning path "${selectedPath.name}" and all its courses have been assigned to ${caregiverName}`,
-        'success'
-      )
-
-      setShowAssignModal(false)
-      setSelectedPath(null)
-      setAssignmentData({ caregiverId: '', dueDate: '' })
-    } catch (err) {
-      console.error('Error assigning path:', err)
-      showToast('Failed to assign learning path. Please try again.', 'error')
-    }
+      await learningPathService.assignToCaregiver(selectedPath.id, assignmentData.caregiverId, user.id, assignmentData.dueDate || undefined)
+      const cg = caregivers.find(c => c.id === assignmentData.caregiverId)
+      showToast(`"${selectedPath.name}" assigned to ${cg ? `${cg.first_name} ${cg.last_name}` : 'caregiver'}`, 'success')
+      setShowAssignModal(false); setSelectedPath(null); setAssignmentData({ caregiverId: '', dueDate: '' })
+    } catch (e) { showToast('Failed to assign learning path', 'error') }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this learning path?')) return
-
-    try {
-      await learningPathService.delete(id)
-      await loadData()
-    } catch (err) {
-      console.error('Error deleting path:', err)
-    }
+    try { await learningPathService.delete(id); await load() } catch (e) { console.error(e) }
   }
 
   const handleEdit = (path: LearningPathWithCourses) => {
     setEditingPath(path)
-    setFormData({
-      name: path.name,
-      description: path.description || '',
-      is_active: path.is_active,
-      selectedCourses: path.courses.map(c => c.course_id)
-    })
+    setFormData({ name: path.name, description: path.description || '', is_active: path.is_active, selectedCourses: path.courses.map(c => c.course_id) })
     setShowForm(true)
   }
 
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      is_active: true,
-      selectedCourses: []
-    })
-    setEditingPath(null)
-    setShowForm(false)
-  }
-
-  const toggleCourse = (courseId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      selectedCourses: prev.selectedCourses.includes(courseId)
-        ? prev.selectedCourses.filter(id => id !== courseId)
-        : [...prev.selectedCourses, courseId]
-    }))
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Navigation />
-        <main className="flex-1 p-8">
-          <div className="text-center">Loading...</div>
-        </main>
-        <Footer />
-      </div>
-    )
-  }
+  const resetForm = () => { setFormData({ name: '', description: '', is_active: true, selectedCourses: [] }); setEditingPath(null); setShowForm(false) }
+  const toggleCourse = (id: string) => setFormData(p => ({ ...p, selectedCourses: p.selectedCourses.includes(id) ? p.selectedCourses.filter(x => x !== id) : [...p.selectedCourses, id] }))
 
   return (
     <MainLayout>
+      <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: 32 }}>
 
-      <main className="flex-1 p-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">Learning Paths</h1>
-              <p className="text-slate-600 mt-2">Group courses together and assign them to caregivers</p>
-            </div>
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Create Learning Path
-            </button>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, ...anim() }}>
+          <div>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#0F172A', margin: '0 0 4px' }}>Learning Paths</h1>
+            <p style={{ fontSize: 14, color: '#64748B', margin: 0 }}>Group courses and assign them as structured tracks</p>
           </div>
-
-          {showForm && (
-            <Card className="mb-8">
-              <CardHeader>
-                <CardTitle>{editingPath ? 'Edit' : 'Create'} Learning Path</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Path Name
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Select Courses
-                    </label>
-                    <div className="border border-slate-300 rounded-lg p-4 max-h-96 overflow-y-auto">
-                      {courses.map((course) => (
-                        <label
-                          key={course.id}
-                          className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={formData.selectedCourses.includes(course.id)}
-                            onChange={() => toggleCourse(course.id)}
-                            className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                          />
-                          <div className="flex-1">
-                            <div className="font-medium text-slate-900">{course.title}</div>
-                            {course.category && (
-                              <div className="text-sm text-slate-600">{course.category}</div>
-                            )}
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="is_active"
-                      checked={formData.is_active}
-                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                    <label htmlFor="is_active" className="text-sm font-medium text-slate-700">
-                      Active
-                    </label>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      {editingPath ? 'Update' : 'Create'} Path
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="grid gap-6">
-            {paths.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <BookOpen className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-                  <p className="text-slate-600">No learning paths yet. Create one to get started!</p>
-                </CardContent>
-              </Card>
-            ) : (
-              paths.map((path) => (
-                <Card key={path.id}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle>{path.name}</CardTitle>
-                        {path.description && (
-                          <p className="text-sm text-slate-600 mt-1">{path.description}</p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {!path.is_active && (
-                          <span className="px-2 py-1 text-xs bg-slate-200 text-slate-700 rounded">
-                            Inactive
-                          </span>
-                        )}
-                        <button
-                          onClick={() => {
-                            setSelectedPath(path)
-                            setShowAssignModal(true)
-                          }}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Assign to caregiver"
-                        >
-                          <Users className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(path)}
-                          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(path.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium text-slate-700 mb-3">
-                        Courses ({path.courses.length})
-                      </div>
-                      {path.courses
-                        .sort((a, b) => a.sequence_order - b.sequence_order)
-                        .map((pathCourse, index) => (
-                          <div
-                            key={pathCourse.id}
-                            className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
-                          >
-                            <GripVertical className="w-4 h-4 text-slate-400" />
-                            <span className="text-sm font-medium text-slate-500 w-6">
-                              {index + 1}.
-                            </span>
-                            <div className="flex-1">
-                              <div className="font-medium text-slate-900">
-                                {pathCourse.course?.title}
-                              </div>
-                              {pathCourse.course?.category && (
-                                <div className="text-sm text-slate-600">
-                                  {pathCourse.course.category}
-                                </div>
-                              )}
-                            </div>
-                            {pathCourse.course?.ce_hours && (
-                              <span className="text-sm text-slate-600">
-                                {pathCourse.course.ce_hours} CE hours
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+          <button onClick={() => setShowForm(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            <Plus size={18} /> Create Path
+          </button>
         </div>
-      </main>
 
-      {showAssignModal && selectedPath && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-slate-900">Assign Learning Path</h2>
-              <button
-                onClick={() => {
-                  setShowAssignModal(false)
-                  setSelectedPath(null)
-                  setAssignmentData({ caregiverId: '', dueDate: '' })
-                }}
-                className="p-1 hover:bg-slate-100 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        {/* Create / Edit Form */}
+        {showForm && (
+          <div style={{ background: 'white', borderRadius: 16, border: '1px solid #F1F5F9', padding: 24, marginBottom: 24, boxShadow: '0 4px 16px rgba(0,0,0,0.06)', ...anim() }}>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#0F172A', margin: '0 0 20px' }}>{editingPath ? 'Edit' : 'Create'} Learning Path</h2>
+            <form onSubmit={handleSubmit}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelS}>Path Name</label>
+                <input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} style={inputS} required />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelS}>Description</label>
+                <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} style={{ ...inputS, resize: 'vertical' }} rows={3} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelS}>Select Courses</label>
+                <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, maxHeight: 280, overflowY: 'auto' }}>
+                  {courses.map(c => (
+                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #F8FAFC', transition: 'background 0.1s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#F8FAFC'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                      <input type="checkbox" checked={formData.selectedCourses.includes(c.id)} onChange={() => toggleCourse(c.id)} style={{ width: 15, height: 15, accentColor: '#2563EB' }} />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#0F172A' }}>{c.title}</div>
+                        {c.category && <div style={{ fontSize: 12, color: '#94A3B8' }}>{c.category}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <p style={{ fontSize: 12, color: '#94A3B8', marginTop: 6 }}>{formData.selectedCourses.length} course{formData.selectedCourses.length !== 1 ? 's' : ''} selected</p>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 14, color: '#475569', marginBottom: 20 }}>
+                <input type="checkbox" checked={formData.is_active} onChange={e => setFormData({ ...formData, is_active: e.target.checked })} style={{ width: 15, height: 15, accentColor: '#2563EB' }} />
+                Active
+              </label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>{editingPath ? 'Update' : 'Create'} Path</button>
+                <button type="button" onClick={resetForm} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        )}
 
-            <div className="mb-4">
-              <p className="text-sm text-slate-600 mb-2">
-                Assigning: <span className="font-medium">{selectedPath.name}</span>
-              </p>
-              <p className="text-xs text-slate-500 bg-blue-50 p-3 rounded-lg">
-                All {selectedPath.courses.length} courses in this learning path will be automatically assigned to the selected caregiver.
-              </p>
-            </div>
-
-            <form onSubmit={handleAssign} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Caregiver
-                </label>
-                <select
-                  value={assignmentData.caregiverId}
-                  onChange={(e) => setAssignmentData({ ...assignmentData, caregiverId: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  <option value="">Select caregiver...</option>
-                  {caregivers
-                    .filter(c => c.is_active)
-                    .map((caregiver) => (
-                      <option key={caregiver.id} value={caregiver.id}>
-                        {caregiver.first_name} {caregiver.last_name}
-                      </option>
+        {/* Paths list */}
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[1, 2, 3].map(i => <div key={i} style={{ height: 120, borderRadius: 14, background: 'linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%)', backgroundSize: '200% 100%', animation: `shimmer 1.5s ease ${i * 0.1}s infinite` }} />)}
+          </div>
+        ) : paths.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '64px 0', background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', ...anim(120) }}>
+            <FolderOpen size={44} color="#CBD5E1" style={{ marginBottom: 14 }} />
+            <p style={{ fontSize: 15, fontWeight: 600, color: '#475569', marginBottom: 6 }}>No learning paths yet</p>
+            <p style={{ fontSize: 13, color: '#94A3B8', marginBottom: 20 }}>Create a path to group courses and assign them as a track</p>
+            <button onClick={() => setShowForm(true)} style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Create First Path</button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {paths.map((path, i) => (
+              <div key={path.id} style={{ background: 'white', borderRadius: 14, border: '1px solid #F1F5F9', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', ...anim(i * 50) }}>
+                {/* Path header */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', padding: '18px 20px', borderBottom: path.courses.length > 0 ? '1px solid #F8FAFC' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{ width: 40, height: 40, background: '#F5F3FF', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <FolderOpen size={20} color="#7C3AED" />
+                    </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#0F172A', margin: 0 }}>{path.name}</h3>
+                        {!path.is_active && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#F1F5F9', color: '#94A3B8' }}>Inactive</span>}
+                      </div>
+                      {path.description && <p style={{ fontSize: 13, color: '#64748B', margin: '0 0 4px' }}>{path.description}</p>}
+                      <p style={{ fontSize: 12, color: '#94A3B8', margin: 0 }}>{path.courses.length} course{path.courses.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[
+                      { icon: <Users size={15} />, bg: '#EFF6FF', col: '#2563EB', hov: '#DBEAFE', action: () => { setSelectedPath(path); setShowAssignModal(true) }, title: 'Assign' },
+                      { icon: <Edit size={15} />, bg: '#F8FAFC', col: '#475569', hov: '#F1F5F9', action: () => handleEdit(path), title: 'Edit' },
+                      { icon: <Trash2 size={15} />, bg: '#FEF2F2', col: '#DC2626', hov: '#FEE2E2', action: () => handleDelete(path.id), title: 'Delete' },
+                    ].map((btn, j) => (
+                      <button key={j} onClick={btn.action} title={btn.title} style={{ width: 32, height: 32, background: btn.bg, border: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: btn.col, transition: 'background 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = btn.hov}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = btn.bg}>
+                        {btn.icon}
+                      </button>
                     ))}
+                  </div>
+                </div>
+                {/* Courses in path */}
+                {path.courses.length > 0 && (
+                  <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {path.courses.sort((a, b) => a.sequence_order - b.sequence_order).map((pc, idx) => (
+                      <div key={pc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#F8FAFC', borderRadius: 8 }}>
+                        <GripVertical size={14} color="#CBD5E1" />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#CBD5E1', width: 18 }}>{idx + 1}</span>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#0F172A' }}>{pc.course?.title}</span>
+                          {pc.course?.category && <span style={{ fontSize: 11, color: '#94A3B8', marginLeft: 8 }}>{pc.course.category}</span>}
+                        </div>
+                        {pc.course?.ce_hours && <span style={{ fontSize: 11, color: '#94A3B8' }}>{pc.course.ce_hours} CE hrs</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Assign modal */}
+      {showAssignModal && selectedPath && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}>
+          <div style={{ background: 'white', borderRadius: 18, maxWidth: 440, width: '100%', padding: 28, boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: '#0F172A', margin: 0 }}>Assign Learning Path</h2>
+              <button onClick={() => { setShowAssignModal(false); setSelectedPath(null); setAssignmentData({ caregiverId: '', dueDate: '' }) }} style={{ width: 30, height: 30, background: '#F1F5F9', border: 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><X size={15} color="#64748B" /></button>
+            </div>
+            <div style={{ background: '#EFF6FF', borderRadius: 10, padding: '12px 14px', marginBottom: 20 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: '#1D4ED8', margin: '0 0 4px' }}>"{selectedPath.name}"</p>
+              <p style={{ fontSize: 12, color: '#3B82F6', margin: 0 }}>All {selectedPath.courses.length} courses will be assigned automatically.</p>
+            </div>
+            <form onSubmit={handleAssign}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelS}>Caregiver</label>
+                <select value={assignmentData.caregiverId} onChange={e => setAssignmentData({ ...assignmentData, caregiverId: e.target.value })} style={inputS} required>
+                  <option value="">Select caregiver…</option>
+                  {caregivers.filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
                 </select>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Due Date (Optional)
-                </label>
-                <input
-                  type="date"
-                  value={assignmentData.dueDate}
-                  onChange={(e) => setAssignmentData({ ...assignmentData, dueDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div style={{ marginBottom: 24 }}>
+                <label style={labelS}>Due Date <span style={{ fontWeight: 400, color: '#94A3B8' }}>(optional)</span></label>
+                <input type="date" value={assignmentData.dueDate} onChange={e => setAssignmentData({ ...assignmentData, dueDate: e.target.value })} style={inputS} />
               </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Assign Path
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAssignModal(false)
-                    setSelectedPath(null)
-                    setAssignmentData({ caregiverId: '', dueDate: '' })
-                  }}
-                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="submit" style={{ flex: 1, padding: 10, background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Assign Path</button>
+                <button type="button" onClick={() => { setShowAssignModal(false); setSelectedPath(null); setAssignmentData({ caregiverId: '', dueDate: '' }) }} style={{ flex: 1, padding: 10, background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
               </div>
             </form>
           </div>
