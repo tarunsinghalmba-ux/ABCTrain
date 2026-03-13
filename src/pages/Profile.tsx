@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { courseService } from '../services/courses'
 import { learningPathService } from '../services/learningPaths'
 import { complianceService } from '../services/compliance'
-import { organizationService, type AgencySettings } from '../services/organizations'
+import { organizationService, type Organization } from '../services/organizations'
 import { supabase } from '../services/supabase'
 import type { CourseAssignment, LearningPathAssignment, ComplianceStatus } from '../types'
 import { User, Mail, Building2, Shield, BookOpen, FolderTree, CheckCircle, Clock, AlertCircle, ExternalLink, Play, Key, Globe, Phone, MapPin } from 'lucide-react'
@@ -22,13 +22,13 @@ export function Profile() {
   const [courseAssignments, setCourseAssignments] = useState<CourseAssignment[]>([])
   const [pathAssignments, setPathAssignments] = useState<LearningPathAssignment[]>([])
   const [complianceStatus, setComplianceStatus] = useState<ComplianceStatus | null>(null)
-  const [agencySettings, setAgencySettings] = useState<AgencySettings | null>(null)
+  const [orgRecord, setOrgRecord] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
   const [completingAssignment, setCompletingAssignment] = useState<CourseAssignment | null>(null)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
   const [showOrgForm, setShowOrgForm] = useState(false)
   const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' })
-  const [orgData, setOrgData] = useState({ address: '', website: '', phone: '', contact_name: '', contact_email: '' })
+  const [orgData, setOrgData] = useState({ address: '', phone: '', website: '', admin_name: '', admin_email: '' })
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: ToastType }>>([])
   const [toastId, setToastId] = useState(0)
 
@@ -46,8 +46,10 @@ export function Profile() {
         setCourseAssignments(c); setPathAssignments(p); setComplianceStatus(cs)
       }
       if ((profile.role === 'admin' || profile.role === 'manager') && profile.organization) {
-        const s = await organizationService.getAgencySettings(profile.organization)
-        if (s) { setAgencySettings(s); setOrgData({ address: s.address || '', website: s.website || '', phone: s.phone || '', contact_name: s.contact_name || '', contact_email: s.contact_email || '' }) }
+        const orgs = await organizationService.getOrganizations()
+        const match = orgs.find(o => o.name === profile.organization) || null
+        setOrgRecord(match)
+        if (match) setOrgData({ address: match.address || '', phone: match.phone || '', website: match.website || '', admin_name: match.admin_name || '', admin_email: match.admin_email || '' })
       }
     } catch (e) { console.error(e) } finally { setLoading(false) }
   }
@@ -62,8 +64,19 @@ export function Profile() {
 
   const handleOrgUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!profile?.organization) { toast('No organization found', 'error'); return }
-    try { await organizationService.updateAgencySettings(profile.organization, orgData); toast('Organization settings updated', 'success'); setShowOrgForm(false); await loadData() }
+    if (!orgRecord) { toast('No organization found', 'error'); return }
+    try {
+      const updated = await organizationService.updateOrganization(orgRecord.id, {
+        address: orgData.address || null,
+        phone: orgData.phone || null,
+        website: orgData.website || null,
+        admin_name: orgData.admin_name || null,
+        admin_email: orgData.admin_email || null,
+      })
+      setOrgRecord(updated)
+      toast('Organization settings updated', 'success')
+      setShowOrgForm(false)
+    }
     catch (e: any) { toast(e.message || 'Failed to update settings', 'error') }
   }
 
@@ -278,48 +291,47 @@ export function Profile() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Building2 size={17} color="#64748B" />
                     <span style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>Organization Settings</span>
+                    {orgRecord && <span style={{ fontSize: 12, color: '#94A3B8' }}>— {orgRecord.name}</span>}
                   </div>
-                  {!showOrgForm && agencySettings && (
+                  {!showOrgForm && (
                     <button onClick={() => setShowOrgForm(true)} style={{ padding: '6px 14px', background: '#EFF6FF', color: '#2563EB', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Edit</button>
                   )}
                 </div>
                 <div style={{ padding: 20 }}>
-                  {agencySettings && !showOrgForm ? (
+                  {!showOrgForm ? (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                       {[
-                        { icon: <MapPin size={14} />, label: 'Address', value: agencySettings.address },
-                        { icon: <Phone size={14} />, label: 'Phone', value: agencySettings.phone },
-                        { icon: <Globe size={14} />, label: 'Website', value: agencySettings.website },
-                        { icon: <Mail size={14} />, label: 'Contact', value: agencySettings.contact_name },
-                        { icon: <Mail size={14} />, label: 'Contact Email', value: agencySettings.contact_email },
+                        { icon: <MapPin size={14} />, label: 'Address',        value: orgRecord?.address },
+                        { icon: <Phone size={14} />,  label: 'Phone',          value: orgRecord?.phone },
+                        { icon: <Globe size={14} />,  label: 'Website',        value: orgRecord?.website },
+                        { icon: <Mail size={14} />,   label: 'Administrator',  value: orgRecord?.admin_name },
+                        { icon: <Mail size={14} />,   label: 'Admin Email',    value: orgRecord?.admin_email },
                       ].map(({ icon, label, value }) => (
                         <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
                           <div style={{ width: 26, height: 26, background: '#F8FAFC', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#94A3B8' }}>{icon}</div>
                           <div>
                             <p style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, margin: '0 0 1px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</p>
-                            <p style={{ fontSize: 13, fontWeight: 600, color: value ? '#0F172A' : '#CBD5E1', margin: 0 }}>{value || 'Not set'}</p>
+                            <p style={{ fontSize: 13, fontWeight: 600, color: value ? '#0F172A' : '#CBD5E1', margin: 0, fontStyle: value ? 'normal' : 'italic' }}>{value || 'Not set'}</p>
                           </div>
                         </div>
                       ))}
                     </div>
-                  ) : showOrgForm ? (
+                  ) : (
                     <form onSubmit={handleOrgUpdate}>
-                      <div style={{ marginBottom: 16 }}><label style={labelS}>Address</label><input type="text" value={orgData.address} onChange={e => setOrgData({ ...orgData, address: e.target.value })} style={inputS} /></div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                        <div><label style={labelS}>Phone</label><input type="tel" value={orgData.phone} onChange={e => setOrgData({ ...orgData, phone: e.target.value })} style={inputS} /></div>
-                        <div><label style={labelS}>Website</label><input type="url" value={orgData.website} onChange={e => setOrgData({ ...orgData, website: e.target.value })} style={inputS} /></div>
+                      <div style={{ marginBottom: 14 }}><label style={labelS}>Address</label><input type="text" value={orgData.address} onChange={e => setOrgData({ ...orgData, address: e.target.value })} style={inputS} placeholder="123 Main St, City, TX 12345" /></div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                        <div><label style={labelS}>Phone</label><input type="tel" value={orgData.phone} onChange={e => setOrgData({ ...orgData, phone: e.target.value })} style={inputS} placeholder="(555) 123-4567" /></div>
+                        <div><label style={labelS}>Website</label><input type="text" value={orgData.website} onChange={e => setOrgData({ ...orgData, website: e.target.value })} style={inputS} placeholder="https://example.com" /></div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                        <div><label style={labelS}>Contact Name</label><input type="text" value={orgData.contact_name} onChange={e => setOrgData({ ...orgData, contact_name: e.target.value })} style={inputS} /></div>
-                        <div><label style={labelS}>Contact Email</label><input type="email" value={orgData.contact_email} onChange={e => setOrgData({ ...orgData, contact_email: e.target.value })} style={inputS} /></div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
+                        <div><label style={labelS}>Administrator Name</label><input type="text" value={orgData.admin_name} onChange={e => setOrgData({ ...orgData, admin_name: e.target.value })} style={inputS} placeholder="Jane Smith" /></div>
+                        <div><label style={labelS}>Administrator Email</label><input type="email" value={orgData.admin_email} onChange={e => setOrgData({ ...orgData, admin_email: e.target.value })} style={inputS} placeholder="admin@example.com" /></div>
                       </div>
                       <div style={{ display: 'flex', gap: 10 }}>
                         <button type="submit" style={{ padding: '9px 20px', background: '#2563EB', color: 'white', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Save</button>
                         <button type="button" onClick={() => setShowOrgForm(false)} style={{ padding: '9px 20px', background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
                       </div>
                     </form>
-                  ) : (
-                    <p style={{ fontSize: 14, color: '#94A3B8', textAlign: 'center', padding: '24px 0' }}>No organization settings found</p>
                   )}
                 </div>
               </div>

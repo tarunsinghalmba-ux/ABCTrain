@@ -5,6 +5,11 @@ export interface Organization {
   name: string
   description: string | null
   is_active: boolean
+  address: string | null
+  phone: string | null
+  website: string | null
+  admin_name: string | null
+  admin_email: string | null
   created_at: string
   updated_at: string
 }
@@ -52,7 +57,7 @@ export const organizationService = {
 
   async updateOrganization(
     id: string,
-    updates: Partial<Pick<Organization, 'name' | 'description' | 'is_active'>>
+    updates: Partial<Pick<Organization, 'name' | 'description' | 'is_active' | 'address' | 'phone' | 'website' | 'admin_name' | 'admin_email'>>
   ): Promise<Organization> {
     const { data, error } = await supabase
       .from('organizations')
